@@ -1,20 +1,37 @@
 # faster-whisper-generate-srt-subtitles
-Generate subtitles srt file from an audio/video file. It uses the faster-whisper library, which is much faster than the OpenAI original one
-It can also translate it to english. The model "large-v2" has the best quality, while "medium" is a good compromise between quality and speed.
+Generate subtitles (SRT) from an audio/video file. It uses the `faster-whisper` library, which is much faster than OpenAI's original Whisper implementation.
+
+It can also translate the generated subtitles into other languages.
+
+The model `large-v2` has the best quality, while `medium` is a good compromise between quality and speed.
 
 Read more about faster-whisper: https://github.com/guillaumekln/faster-whisper
 
+## Usage
+
+```bash
+python generate-srt.py input.mp4
 ```
 
+Translate to English (uses faster-whisper built-in translation):
 
-usage: generate-srt.py [-h] input_file
-Transcribe audio from a video file and generate an SRT file.
-positional arguments:
-  input_file  Path to the video file for transcription
-options:
-  -h, --help  show this help message and exit
-
-
-How to install faster-whisper:
-pip install faster-whisper
+```bash
+python generate-srt.py input.mp4 --translate-to en
 ```
+
+Translate to another language (e.g. Spanish):
+
+```bash
+python generate-srt.py input.mp4 --translate-to es
+```
+
+## Installation
+
+Install the required dependencies using the provided requirements file:
+
+```bash
+pip install -r requirements.txt
+```
+
+> ⚠️ `googletrans` needs an internet connection to work (it uses Google Translate's web API).
+
