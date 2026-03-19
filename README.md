@@ -43,8 +43,9 @@ python generate-srt.py "ToProcess\video.mp4" --languages en --translate-mode non
 > **Note:** The script always writes the original transcription to `video.srt`. When translation is enabled, translated subtitles are written to `video.<lang>.srt` (e.g. `video.en.srt`).
 > - `--translate-mode all` translates all segments.
 > - `--translate-mode non-target` keeps segments already in the target language (best-effort detection) and translates only other segments.
+> - Default is `--vad-filter on` for fewer, more compact segments. Use `--vad-filter off` to disable Whisper VAD filtering for broader coverage.
+> - `--min-speakers` and `--max-speakers` can be used to enable speaker diarization.
 > - During transcription, the script shows an in-place progress spinner and elapsed seconds.
-> - Default is `--vad-filter` off for broader coverage. Use `--vad-filter` to enable Whisper VAD filtering if you want fewer, more compact segments.
 
 ### 6) Scan entire library recursively and generate SRTs next to each file
 ```bash

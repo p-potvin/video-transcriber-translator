@@ -11,89 +11,14 @@ def format_time(seconds):
     milliseconds = (seconds - int(seconds)) * 1000
     return f"{int(hours):02d}:{int(minutes):02d}:{int(seconds):02d},{int(milliseconds):03d}"
 
-
-def _translate_with_googletrans(texts, target_lang, translate_mode, max_calls):
-    try:
-        from googletrans import Translator
-    except ImportError as exc:
-        raise ImportError(
-            "Missing googletrans. Install with: pip install googletrans==4.0.0-rc1"
-        ) from exc
-
-    translator = Translator()
-    translated_texts = []
-    calls = 0
-
-    if translate_mode == "non-target":
-        for text in texts:
-            calls += 1
-            if calls > max_calls:
-                raise RuntimeError("Translation request limit reached.")
-            result = translator.translate(text, dest=target_lang)
-            detected = getattr(result, "src", "").lower().split("-")[0]
-            if detected == target_lang.lower().split("-")[0]:
-                translated_texts.append(text)
-            else:
-                translated_texts.append(result.text)
-        return translated_texts
-
-    chunk_size = 40
-    for i in range(0, len(texts), chunk_size):
-        calls += 1
-        if calls > max_calls:
-            raise RuntimeError("Translation request limit reached.")
-        chunk = texts[i : i + chunk_size]
-        result = translator.translate(chunk, dest=target_lang)
-        if isinstance(result, list):
-            translated_texts.extend([item.text for item in result])
-        else:
-            translated_texts.append(result.text)
-    return translated_texts
-
-
-def _translate_with_deep_translator(texts, target_lang, translate_mode, max_calls):
-    try:
-        from deep_translator import GoogleTranslator
-    except ImportError as exc:
-        raise ImportError(
-            "Missing deep-translator. Install with: pip install deep-translator"
-        ) from exc
-
-    translated_texts = []
-    calls = 0
-    if translate_mode == "non-target":
-        for text in texts:
-            calls += 1
-            if calls > max_calls:
-                raise RuntimeError("Translation request limit reached.")
-            detected = GoogleTranslator(source="auto", target=target_lang).detect(text)
-            if detected.lower().split("-")[0] == target_lang.lower().split("-")[0]:
-                translated_texts.append(text)
-            else:
-                translated_texts.append(
-                    GoogleTranslator(source="auto", target=target_lang).translate(text)
-                )
-        return translated_texts
-
-    chunk_size = 40
-    for i in range(0, len(texts), chunk_size):
-        calls += 1
-        if calls > max_calls:
-            raise RuntimeError("Translation request limit reached.")
-        for text in texts[i : i + chunk_size]:
-            translated_texts.append(
-                GoogleTranslator(source="auto", target=target_lang).translate(text)
-            )
-    return translated_texts
-
-
-def _translate_segments(
+async def _translate_segments(
     texts,
     target_lang: str,
-    translate_api="googletrans",
+    translate_api="deep-translator",
     max_chars=350000,
     max_calls=250,
     translate_mode="all",
+    detector=None, # Add detector as an argument
 ):
     if not texts:
         return []
@@ -105,108 +30,53 @@ def _translate_segments(
             "Use --max-translate-chars to raise this limit or skip translation."
         )
 
-    # prefer line-by-line for non-target detection behavior
-    if translate_mode == "non-target":
-        if translate_api == "googletrans":
-            try:
-                from googletrans import Translator
-            except ImportError as exc:
-                raise ImportError(
-                    "Missing googletrans. Install with: pip install googletrans==4.0.0-rc1"
-                ) from exc
-            translator = Translator()
-            translated_texts = []
-            calls = 0
-            for text in texts:
-                calls += 1
-                if calls > max_calls:
-                    raise RuntimeError("Translation request limit reached.")
-                if not text.strip():
-                    translated_texts.append(text)
-                    continue
-                result = translator.translate(text, dest=target_lang)
-                detected = getattr(result, "src", "").lower().split("-")[0]
-                target_base = target_lang.lower().split("-")[0]
-                if detected == target_base:
-                    translated_texts.append(text)
-                else:
-                    translated_texts.append(result.text)
-            return translated_texts
-
-        if translate_api == "deep-translator":
-            try:
-                from deep_translator import GoogleTranslator
-            except ImportError as exc:
-                raise ImportError(
-                    "Missing deep-translator. Install with: pip install deep-translator"
-                ) from exc
-            translated_texts = []
-            calls = 0
-            for text in texts:
-                calls += 1
-                if calls > max_calls:
-                    raise RuntimeError("Translation request limit reached.")
-                if not text.strip():
-                    translated_texts.append(text)
-                    continue
-                if translate_mode == "non-target":
-                    detected = None
-                    try:
-                        from googletrans import Translator
-                        detected = Translator().detect(text).lang
-                    except Exception:
-                        detected = None
-                    if detected and detected.lower().split("-")[0] == target_lang.lower().split("-")[0]:
-                        translated_texts.append(text)
-                        continue
-                translated_texts.append(
-                    GoogleTranslator(source="auto", target=target_lang).translate(text)
-                )
-            return translated_texts
-
-    # default all mode or fallback
-    if translate_api == "googletrans":
-        try:
-            from googletrans import Translator
-        except ImportError as exc:
-            raise ImportError(
-                "Missing googletrans. Install with: pip install googletrans==4.0.0-rc1"
-            ) from exc
-        translator = Translator()
-        translated_texts = []
-        calls = 0
-        chunk_size = 40
-        for i in range(0, len(texts), chunk_size):
-            calls += 1
-            if calls > max_calls:
-                raise RuntimeError("Translation request limit reached.")
-            chunk = texts[i : i + chunk_size]
-            result = translator.translate(chunk, dest=target_lang)
-            if isinstance(result, list):
-                translated_texts.extend([item.text for item in result])
-            else:
-                translated_texts.append(result.text)
-        return translated_texts
-
     if translate_api == "deep-translator":
         try:
             from deep_translator import GoogleTranslator
+            from googletrans import Translator as GoogleTrans_Detector
         except ImportError as exc:
             raise ImportError(
-                "Missing deep-translator. Install with: pip install deep-translator"
+                "Missing deep-translator or googletrans. Install with: "
+                "pip install deep-translator googletrans==4.0.0-rc1"
             ) from exc
+
         translated_texts = []
         calls = 0
+        if detector is None: # Initialize detector only if not provided
+            detector = GoogleTrans_Detector()
+
+        if translate_mode == "non-target":
+            for text in texts:                
+                if calls > max_calls: 
+                    raise RuntimeError("Translation request limit reached.")
+                if not text.strip():
+                    translated_texts.append(text)
+                    continue
+                
+                detected_lang = await detector.detect(text).lang.lower().split("-")[0]
+                calls += 1
+
+                if detected_lang == target_lang.lower().split("-")[0]:
+                    translated_texts.append(text)
+                else:
+                    calls += 1
+                    if calls > max_calls: 
+                        raise RuntimeError("Translation request limit reached.")
+                    translated_texts.append(getattr(GoogleTranslator(source=detected_lang, target=target_lang).translate(text), "text", text))
+            return translated_texts
+
+        # "all" mode for deep-translator
         for text in texts:
             calls += 1
-            if calls > max_calls:
-                raise RuntimeError("Translation request limit reached.")
-            translated_texts.append(
-                GoogleTranslator(source="auto", target=target_lang).translate(text)
-            )
+            if calls > max_calls: raise RuntimeError("Translation request limit reached.")
+            if not text.strip():
+                translated_texts.append(text)
+                continue
+            translated_texts.append(getattr(GoogleTranslator(source="auto", target=target_lang).translate(text), "text", text))
         return translated_texts
 
-    raise ValueError(f"Unsupported translate API: {translate_api}")
+    else:
+        raise ValueError(f"Unsupported translate API: {translate_api}")
 
 
 def get_media_duration_seconds(input_file):
@@ -252,7 +122,7 @@ def extract_audio_to_wav(input_file, output_wav):
     )
 
 
-def isolate_vocals_with_demucs(input_audio, output_dir, device="cpu"):
+def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
     os.makedirs(output_dir, exist_ok=True)
     cmd = ["demucs", "--two-stems=vocals", "-o", output_dir, input_audio]
     if device == "cuda":
@@ -260,7 +130,6 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cpu"):
         cmd.insert(2, "cuda")
     subprocess.run(cmd, check=True, capture_output=True, text=True)
 
-    # Demucs writes outputs under output_dir/<model-name>/<file>/vocals.wav
     vocals_path = None
     for root, _, files in os.walk(output_dir):
         for file in files:
@@ -272,7 +141,6 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cpu"):
     if not vocals_path:
         raise RuntimeError("Voice isolation with Demucs did not produce vocals.wav")
     return vocals_path
-
 
 def write_srt(output_path, segments, texts):
     with open(output_path, "w", encoding="utf-8") as output_file:
@@ -286,7 +154,6 @@ def write_srt(output_path, segments, texts):
 
 import threading
 
-
 def transcribe_video(
     input_file,
     output_file=None,
@@ -299,89 +166,78 @@ def transcribe_video(
     overwrite=True,
     vad_filter=True,
 ):
-    model_size = "medium"  # options: tiny, small, medium, large-v2
-    model = WhisperModel(model_size, device="cpu", cpu_threads=12, compute_type="int8")
+    # Validate input file
+    if not os.path.isfile(input_file):
+        if os.path.isdir(input_file):
+            raise ValueError(f"Input path is a directory, not a file: {input_file}")
+        else:
+            raise FileNotFoundError(f"Input file does not exist: {input_file}")
+  
+    # Check if all requested output files already exist when overwrite is disabled
+    if not overwrite:
+        base_path = os.path.splitext(input_file)[0]
+        output_base = os.path.splitext(output_file)[0] if output_file else base_path
+        
+        check_paths = []
+        if not skip_original:
+            check_paths.append(output_base + ".srt")
+        if languages:
+            for lang in languages:
+                lang_code = lang.strip().lower()
+                if lang_code and lang_code not in ("orig", "original", "none"):
+                    check_paths.append(f"{output_base}.{lang_code}.srt")
+        
+        if check_paths and all(os.path.exists(p) for p in check_paths):
+            print(f"All requested SRT files already exist, skipping: {input_file}")
+            return []
 
-    print(f"Transcribing: {input_file}")
-    print(f"VAD filter: {vad_filter}")
+    # --- Step 1: Transcribe ---
+    model_size = "medium"
+    model = WhisperModel(model_size, device="cuda", compute_type="int8_float16")
+
+    print(f"Transcribing: {input_file} (VAD filter: {vad_filter})")
     start_ts = time.time()
-    spinner = ["|", "/", "-", "\\"]
-    stop_flag = threading.Event()
-
-    def _show_progress():
-        idx = 0
-        while not stop_flag.is_set():
-            elapsed = time.time() - start_ts
-            print(
-                f"\rTranscribing... {spinner[idx % len(spinner)]} Elapsed: {int(elapsed)}s",
-                end="",
-                flush=True,
-            )
-            idx += 1
-            time.sleep(0.2)
-        print("\rTranscribing... done. " + " " * 30, flush=True)
-
-    prog_thread = threading.Thread(target=_show_progress)
-    prog_thread.start()
-
+    
+    # Transcribe once to get segments and language info
     all_segments, info = model.transcribe(input_file, beam_size=5, task="transcribe", vad_filter=vad_filter)
     all_segments = list(all_segments)
-
-    stop_flag.set()
-    prog_thread.join()
-
     elapsed_total = time.time() - start_ts
     print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
     print(f"Segments generated: {len(all_segments)}")
     print(f"Transcription elapsed: {elapsed_total:.1f}s")
     original_texts = [segment.text for segment in all_segments]
 
+    # --- Step 2: Prepare output file paths and contents ---
     base_path = os.path.splitext(input_file)[0]
-    output_dir = os.path.dirname(input_file)
+    output_base = os.path.splitext(output_file)[0] if output_file else base_path
 
-    if output_file and os.path.isdir(output_file):
-        raise ValueError(f"Output file cannot be a directory: {output_file}")
+    outputs_to_generate = {}
 
-    if output_file:
-        output_base = os.path.splitext(output_file)[0]
-    else:
-        output_base = base_path
-
-    output_targets = []
     if not skip_original:
-        output_targets.append(output_base + ".srt")
+        original_srt_path = output_base + ".srt"
+        if not overwrite and os.path.exists(original_srt_path):
+            print(f"Skipping {original_srt_path} (overwrite is off).")
+            # If we skip original, we don't add it to outputs_to_generate.
+            # The transcription has already happened at the beginning of the function, so original_texts is available for translation.
+        else:
+            path = output_base + ".srt"
+            outputs_to_generate[path] = original_texts
+
     if languages:
-        for lang in languages:
-            lang_code = lang.strip().lower()
+        for lang_code in languages:
+            lang_code = lang_code.strip().lower()
             if not lang_code or lang_code in ("orig", "original", "none"):
                 continue
-            output_targets.append(f"{output_base}.{lang_code}.srt")
 
-    # If all targets already exist and overwrite is disabled, skip entire transcription.
-    if not overwrite and output_targets and all(os.path.exists(path) for path in output_targets):
-        print(f"All output files already exist, skipping transcription: {input_file}")
-        return []
+            path = f"{output_base}.{lang_code}.srt"
+            
+            is_target_lang_same_as_source = (lang_code == info.language) or \
+                                            (lang_code.split('-')[0] == info.language.split('-')[0])
 
-    outputs = []
-    if not skip_original:
-        orig_path = output_base + ".srt"
-        if os.path.exists(orig_path) and not overwrite:
-            print(f"Skipping existing file: {orig_path}")
-        else:
-            write_srt(orig_path, all_segments, original_texts)
-            outputs.append(orig_path)
-            print(f"Wrote original srt: {orig_path}")
-
-    if languages:
-        for lang in languages:
-            lang_code = lang.strip().lower()
-            if not lang_code:
-                continue
-            if lang_code in ("orig", "original", "none"):
-                continue
-            if lang_code == "en" and info.language == "en":
+            if is_target_lang_same_as_source and translate_mode != "all":
                 translated_texts = original_texts
             else:
+                print(f"Translating to {lang_code}...")
                 translated_texts = _translate_segments(
                     original_texts,
                     target_lang=lang_code,
@@ -389,18 +245,25 @@ def transcribe_video(
                     translate_mode=translate_mode,
                     max_chars=max_translate_chars,
                     max_calls=max_translate_calls,
+                    detector=None
                 )
+            
+            outputs_to_generate[path] = translated_texts
+    
+    # --- Step 3: Write all generated files ---
+           
+    if not outputs_to_generate:
+        print("No new files to generate.")
+        return []
 
-            out_path = f"{output_base}.{lang_code}.srt"
-            if os.path.exists(out_path) and not overwrite:
-                print(f"Skipping existing translation file: {out_path}")
-                continue
-
-            write_srt(out_path, all_segments, translated_texts)
-            outputs.append(out_path)
-            print(f"Wrote translated srt: {out_path}")
-
-    return outputs
+    print(f"Writing {len(outputs_to_generate)} SRT file(s)...")
+    output_paths = []
+    for path, texts_to_write in outputs_to_generate.items():
+        write_srt(path, all_segments, texts_to_write)
+        output_paths.append(path)
+        print(f"Wrote: {path}")
+        
+    return output_paths
 
 
 def find_media_files(root_dir, extensions):
@@ -416,7 +279,7 @@ def print_progress(current, total, prefix="", width=30):
     ratio = current / total if total > 0 else 1
     filled = int(width * ratio)
     bar = "#" * filled + "-" * (width - filled)
-    print(f"\r{prefix} [{bar}] {current}/{total}", end="", flush=True)
+    print(f"\r{prefix} [{bar}] {current}/{total}\r", end="", flush=True)
     if current >= total:
         print("", flush=True)
 
@@ -443,16 +306,12 @@ def main():
     parser.add_argument("--max-translate-calls", type=int, default=250, help="Max translator calls per video")
     parser.add_argument("--max-duration", type=float, default=3600, help="Max media duration in seconds to process (skip longer files)")
     parser.add_argument("--continue-on-error", action="store_true", help="For scan mode, continue to next file when one fails")
-    parser.add_argument("--no-overwrite", action="store_true", help="Do not overwrite existing SRT files")
-    parser.add_argument("--vad-filter", action="store_true", default=False, help="Enable VAD filtering in Whisper transcribe (default false for better coverage)")
-    parser.add_argument(
-        "--extensions",
-        default=".mp4,.mkv,.avi,.mov,.flv,.webm,.mp3,.wav,.m4a",
-        help="Comma-separated media extensions for scan mode",
+    parser.add_argument("--overwrite", action="store_true", dest="overwrite", default=False, help="Overwrite existing SRT files")
+    parser.add_argument("--no-vad-filter", action="store_true", dest="vad_filter", default=False, help="Disable VAD filtering for more accurate timestamps (default is enabled).")
+    parser.add_argument("--extensions", default=".mp4,.mkv,.avi,.mov,.flv,.webm,.mp3,.wav,.m4a", help="Comma-separated media extensions for scan mode",
     )
 
     args = parser.parse_args()
-    overwrite = not args.no_overwrite
     languages = [lang.strip().lower() for lang in args.languages.split(",") if lang.strip()]
 
     if args.scan_dir:
@@ -488,8 +347,8 @@ def main():
                     translate_mode=args.translate_mode,
                     max_translate_chars=args.max_translate_chars,
                     max_translate_calls=args.max_translate_calls,
-                    overwrite=overwrite,
-                vad_filter=args.vad_filter,
+                    overwrite=args.overwrite,
+                    vad_filter=args.vad_filter,
                 )
                 print(f"\nDone: {path} -> {len(outputs)} output files")
                 successes.append(path)
@@ -508,13 +367,7 @@ def main():
                 print(f" - {fail_path}: {reason}")
         print(f"Total time: {elapsed:.1f}s")
 
-    else:
-        if not args.input_file:
-            parser.error("Provide input_file or --scan-dir")
-
-        if not os.path.exists(args.input_file):
-            raise FileNotFoundError(f"Input file does not exist: {args.input_file}")
-
+    else:        
         transcribe_video(
             args.input_file,
             output_file=args.output_file,
@@ -524,7 +377,7 @@ def main():
             translate_mode=args.translate_mode,
             max_translate_chars=args.max_translate_chars,
             max_translate_calls=args.max_translate_calls,
-            overwrite=overwrite,
+            overwrite=args.overwrite,
             vad_filter=args.vad_filter,
         )
 
