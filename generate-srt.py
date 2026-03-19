@@ -1,9 +1,10 @@
 import argparse
 import os
+import sys
 import time
-import core
-import media
-import utils
+from video_transcriber import core
+from video_transcriber import utils
+from video_transcriber import media
 
 
 def main():
@@ -105,4 +106,4 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    sys.exit(main())

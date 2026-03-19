@@ -1,6 +1,3 @@
 {
-    "python-envs.defaultEnvManager": "ms-python.python:system",
-    "python.analysis.extraPaths": [
-        "./video-transcriber"
-    ]
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }

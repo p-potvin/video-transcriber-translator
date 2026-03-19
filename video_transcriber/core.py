@@ -1,8 +1,8 @@
 import os
 import time
 from faster_whisper import WhisperModel
-import utils
-import translation
+from video_transcriber import utils
+from video_transcriber import translation
 
 def transcribe_video(
     input_file,
