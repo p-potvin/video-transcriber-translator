@@ -153,7 +153,7 @@ def _translate_segments(
                     detected = None
                     try:
                         from googletrans import Translator
-                        detected = Translator().detect(text).lang
+                        detected = getattr(Translator().translate(text, dest=target_lang), "src", None)
                     except Exception:
                         detected = None
                     if detected and detected.lower().split("-")[0] == target_lang.lower().split("-")[0]:
