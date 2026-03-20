@@ -1,5 +1,6 @@
 import os
 import time
+import tempfile
 from faster_whisper import WhisperModel
 from video_transcriber import utils
 from video_transcriber import translation
@@ -55,42 +56,57 @@ def transcribe_video(
     # --- Step 1: Transcribe ---
     model = get_whisper_model()
 
-    # Dynamic VAD threshold detection
-    if vad_filter:
-        if vad_threshold is None or vad_threshold == "auto" or vad_threshold == 0.0:
-            print(f"Analyzing audio volume for automatic VAD...")
-            vol_metrics = media.get_audio_volume_metrics(input_file)
-            mean_vol = vol_metrics.get("mean_volume", -25.0)
-            
-            # Simple heuristic: 
-            # - More silence/quieter means lower threshold to pick up faint sounds.
-            # - Base threshold of 0.35 for 'normal' levels around -20dB
-            # - If it's -40dB (very quiet), we want to lower threshold to capture it.
-            #   (e.g., threshold = 0.35 + (mean_vol + 20) * 0.01)
-            #   -20dB => 0.35
-            #   -40dB => 0.15 
-            #   -10dB => 0.45
-            
-            vad_threshold = max(0.15, min(0.5, 0.35 + (mean_vol + 20) * 0.01))
-            print(f"Mean volume: {mean_vol:.1f} dB -> Calculated auto-VAD threshold: {vad_threshold:.2f}")
-
-    print(f"Transcribing: {input_file} (VAD filter: {vad_filter}, threshold: {vad_threshold})")
-    start_ts = time.time()
+    # Dynamic VAD threshold detection and Audio Boosting
+    transcription_file = input_file
+    temp_audio_file = None
     
-    # Transcribe once to get segments and language info
-    all_segments, info = model.transcribe(
-        input_file, 
-        beam_size=5, 
-        task="transcribe", 
-        vad_filter=vad_filter,
-        vad_parameters=dict(threshold=vad_threshold) if vad_filter else None
-    )
-    all_segments = list(all_segments)
-    elapsed_total = time.time() - start_ts
-    print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
-    print(f"Segments generated: {len(all_segments)}")
-    print(f"Transcription elapsed: {elapsed_total:.1f}s")
-    original_texts = [segment.text for segment in all_segments]
+    try:
+        vol_metrics = media.get_audio_volume_metrics(input_file)
+        mean_vol = vol_metrics.get("mean_volume", -25.0)
+        
+        # Boost volume if it's too quiet (target -18 dB)
+        if mean_vol < -22.0:
+            boost_db = -18.0 - mean_vol
+            print(f"Low volume detected (Mean: {mean_vol:.1f} dB). Boosting audio by {boost_db:.1f} dB...")
+            temp_fd, temp_path = tempfile.mkstemp(suffix=".wav")
+            os.close(temp_fd)
+            temp_audio_file = temp_path
+            media.extract_audio_to_wav(input_file, temp_audio_file, volume_boost_db=boost_db)
+            transcription_file = temp_audio_file
+            # Once boosted, our effective mean volume is around -18.0.
+            mean_vol = -18.0
+
+        if vad_filter:
+            if vad_threshold is None or vad_threshold == "auto" or vad_threshold == 0.0:
+                # Simple heuristic: 
+                # - Base threshold of 0.35 for 'normal' levels around -20dB
+                vad_threshold = max(0.15, min(0.5, 0.35 + (mean_vol + 20) * 0.01))
+                print(f"Calculated auto-VAD threshold: {vad_threshold:.2f}")
+
+        print(f"Transcribing: {input_file} (VAD filter: {vad_filter}, threshold: {vad_threshold})")
+        start_ts = time.time()
+        
+        # Transcribe once to get segments and language info
+        all_segments, info = model.transcribe(
+            transcription_file, 
+            beam_size=5, 
+            task="transcribe", 
+            vad_filter=vad_filter,
+            vad_parameters=dict(threshold=vad_threshold) if vad_filter else None
+        )
+        all_segments = list(all_segments)
+        elapsed_total = time.time() - start_ts
+        print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
+        print(f"Segments generated: {len(all_segments)}")
+        print(f"Transcription elapsed: {elapsed_total:.1f}s")
+        original_texts = [segment.text for segment in all_segments]
+    finally:
+        # Cleanup temporary boosted audio file
+        if temp_audio_file and os.path.exists(temp_audio_file):
+            try:
+                os.remove(temp_audio_file)
+            except Exception as e:
+                print(f"Warning: Failed to clean up temporary audio file {temp_audio_file}: {e}")
 
     # --- Step 2: Prepare output file paths and contents ---
     base_path = os.path.splitext(input_file)[0]

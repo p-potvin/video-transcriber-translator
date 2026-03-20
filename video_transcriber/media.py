@@ -23,21 +23,28 @@ def get_media_duration_seconds(input_file):
         return None
 
 
-def extract_audio_to_wav(input_file, output_wav):
+def extract_audio_to_wav(input_file, output_wav, volume_boost_db=0.0):
+    cmd = [
+        "ffmpeg",
+        "-y",
+        "-i",
+        input_file,
+        "-ar",
+        "16000",
+        "-ac",
+        "1",
+    ]
+    if volume_boost_db > 0.0:
+        cmd.extend(["-af", f"volume={volume_boost_db}dB"])
+    
+    cmd.extend([
+        "-c:a",
+        "pcm_s16le",
+        output_wav,
+    ])
+    
     subprocess.run(
-        [
-            "ffmpeg",
-            "-y",
-            "-i",
-            input_file,
-            "-ar",
-            "16000",
-            "-ac",
-            "1",
-            "-c:a",
-            "pcm_s16le",
-            output_wav,
-        ],
+        cmd,
         capture_output=True,
         text=True,
         check=True,
