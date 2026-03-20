@@ -24,6 +24,7 @@ def transcribe_video(
     max_translate_calls=500,
     overwrite=False,
     vad_filter=True,
+    vad_threshold=0.35,
 ):
     # Validate input file
     if not os.path.isfile(input_file):
@@ -53,11 +54,17 @@ def transcribe_video(
     # --- Step 1: Transcribe ---
     model = get_whisper_model()
 
-    print(f"Transcribing: {input_file} (VAD filter: {vad_filter})")
+    print(f"Transcribing: {input_file} (VAD filter: {vad_filter}, threshold: {vad_threshold})")
     start_ts = time.time()
     
     # Transcribe once to get segments and language info
-    all_segments, info = model.transcribe(input_file, beam_size=5, task="transcribe", vad_filter=vad_filter)
+    all_segments, info = model.transcribe(
+        input_file, 
+        beam_size=5, 
+        task="transcribe", 
+        vad_filter=vad_filter,
+        vad_parameters=dict(threshold=vad_threshold) if vad_filter else None
+    )
     all_segments = list(all_segments)
     elapsed_total = time.time() - start_ts
     print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
