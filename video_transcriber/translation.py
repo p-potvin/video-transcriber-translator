@@ -87,7 +87,12 @@ async def translate_segments(
                     if calls > max_calls: 
                         raise RuntimeError("Translation request limit reached.")
                     try:
-                        translated_texts.append(getattr(GoogleTranslator(source=detected_lang, target=target_lang).translate(text), "text", text))
+                        result = GoogleTranslator(source=detected_lang, target=target_lang).translate(text)
+                        # deep-translator returns a string for translate(); accept that.
+                        if isinstance(result, str):
+                            translated_texts.append(result)
+                        else:
+                            translated_texts.append(getattr(result, "text", text))
                     except LanguageNotSupportedException as exc:
                         raise UnsupportedLanguageError(
                             f"Detected unsupported source language '{detected_lang}' for translation."
@@ -101,7 +106,11 @@ async def translate_segments(
             if not text.strip():
                 translated_texts.append(text)
                 continue
-            translated_texts.append(getattr(GoogleTranslator(source="auto", target=target_lang).translate(text), "text", text))
+            result = GoogleTranslator(source="auto", target=target_lang).translate(text)
+            if isinstance(result, str):
+                translated_texts.append(result)
+            else:
+                translated_texts.append(getattr(result, "text", text))
         return translated_texts
 
     else:
