@@ -27,7 +27,7 @@ def transcribe_video(
     overwrite=False,
     vad_filter=True,
     vad_threshold=None,
-    normalize_audio=True,
+    isolate_vocals=True,
 ):
     # Validate input file
     if not os.path.isfile(input_file):
@@ -57,30 +57,28 @@ def transcribe_video(
     # --- Step 1: Transcribe ---
     model = get_whisper_model()
 
-    # Dynamic VAD threshold detection and Audio Boosting
+    # Dynamic VAD threshold detection and Audio Isolation
     transcription_file = input_file
-    temp_audio_file = None
+    temp_dir = None
     
     try:
-        vol_metrics = media.get_audio_volume_metrics(input_file)
-        mean_vol = vol_metrics.get("mean_volume", -25.0)
-        
-        # Apply loudness normalization for all audio to ensure consistent speech-to-noise ratio
-        if normalize_audio:
-            print(f"Applying dynamic loudness normalization (Original Mean Vol: {mean_vol:.1f} dB)...")
-            temp_fd, temp_path = tempfile.mkstemp(suffix=".wav")
-            os.close(temp_fd)
-            temp_audio_file = temp_path
-            media.extract_audio_to_wav(input_file, temp_audio_file, normalize=True)
-            transcription_file = temp_audio_file
-            # Once normalized, audio levels are ideal (loudnorm targets ~ -16 LUFS)
-            mean_vol = -16.0
+        import shutil
+        if isolate_vocals:
+            print(f"Isolating vocals with Demucs to remove background noise (GPU acceleration enabled)...")
+            temp_dir = tempfile.mkdtemp(prefix="demucs_")
+            try:
+                # This automatically executes on the GPU via device="cuda"
+                vocals_path = media.isolate_vocals_with_demucs(input_file, temp_dir, device="cuda")
+                transcription_file = vocals_path
+            except Exception as e:
+                print(f"Warning: Vocal isolation failed: {e}. Falling back to original audio.")
+                transcription_file = input_file
 
         if vad_filter:
             if vad_threshold is None or vad_threshold == "auto" or vad_threshold == 0.0:
-                # With normalized audio, the standard threshold of ~0.35 works perfectly.
-                vad_threshold = max(0.15, min(0.35, 0.35 + (mean_vol + 16) * 0.01))
-                print(f"Calculated auto-VAD threshold: {vad_threshold:.2f}")
+                # With isolated vocals, a clean threshold of 0.35 is generally perfect.
+                vad_threshold = 0.35
+                print(f"Using optimal auto-VAD threshold for pure vocals: {vad_threshold:.2f}")
 
         print(f"Transcribing: {input_file} (VAD filter: {vad_filter}, threshold: {vad_threshold})")
         start_ts = time.time()
@@ -100,12 +98,12 @@ def transcribe_video(
         print(f"Transcription elapsed: {elapsed_total:.1f}s")
         original_texts = [segment.text for segment in all_segments]
     finally:
-        # Cleanup temporary boosted audio file
-        if temp_audio_file and os.path.exists(temp_audio_file):
+        # Cleanup temporary audio directory
+        if temp_dir and os.path.exists(temp_dir):
             try:
-                os.remove(temp_audio_file)
+                shutil.rmtree(temp_dir)
             except Exception as e:
-                print(f"Warning: Failed to clean up temporary audio file {temp_audio_file}: {e}")
+                print(f"Warning: Failed to clean up temporary audio directory {temp_dir}: {e}")
 
     # --- Step 2: Prepare output file paths and contents ---
     base_path = os.path.splitext(input_file)[0]
@@ -144,6 +142,7 @@ def transcribe_video(
                     continue
                 print(f"Translating to {lang_code}...")
                 import asyncio
+                trans_start_ts = time.time()
                 try:
                     translated_texts = asyncio.run(translation.translate_segments(
                         original_texts,
@@ -154,6 +153,8 @@ def transcribe_video(
                         max_calls=max_translate_calls,
                         detector=None
                     ))
+                    trans_elapsed = time.time() - trans_start_ts
+                    print(f"Translation to {lang_code} elapsed: {trans_elapsed:.1f}s")
                 except translation.UnsupportedLanguageError as exc:
                     print(f"Skipping translation to {lang_code}: {exc}")
                     continue
