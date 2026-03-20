@@ -35,6 +35,16 @@ def main():
     )
 
     args = parser.parse_args()
+    
+    # Default to scanning 'to_process' folder if no input is provided
+    if not args.input_file and not args.scan_dir:
+        default_dir = "to_process"
+        if os.path.isdir(default_dir):
+            args.scan_dir = default_dir
+            print(f"No input specified. Defaulting to scan directory: {default_dir}")
+        else:
+            parser.error("No input file or scan directory specified, and default 'to_process' folder not found.")
+
     languages = [lang.strip().lower() for lang in args.languages.split(",") if lang.strip()]
 
     if args.scan_dir:
