@@ -56,6 +56,8 @@ def extract_audio_to_wav(input_file, output_wav, normalize=False):
 def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
     import sys
     os.makedirs(output_dir, exist_ok=True)
+    
+    # Revert to WAV because Demucs MP3 encoding is creating silent files
     cmd = [sys.executable, "-m", "demucs.separate", "--two-stems=vocals", "-o", output_dir, input_audio]
     if device == "cuda":
         cmd.insert(3, "-d")
@@ -91,14 +93,30 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
     vocals_path = None
     for root, _, files in os.walk(output_dir):
         for file in files:
-            if file.endswith("vocals.wav"):
+            if file == "vocals.wav":
                 vocals_path = os.path.join(root, file)
                 break
         if vocals_path:
             break
     if not vocals_path:
         raise RuntimeError("Voice isolation with Demucs did not produce vocals.wav")
-    return vocals_path
+        
+    # Normalize the vocals to ensure Whisper and its VAD can distinctly pick up the speech,
+    # as Demucs often produces very quiet audio outputs that get dropped by VAD or induce hallucinations.
+    normalized_path = vocals_path.replace(".wav", "_norm.wav")
+    try:
+        subprocess.run(
+            [
+                "ffmpeg", "-y", "-i", vocals_path, 
+                "-af", "loudnorm=I=-16:TP=-1.5:LRA=11", 
+                "-c:a", "pcm_s16le", normalized_path
+            ],
+            check=True, capture_output=True, text=True
+        )
+        return normalized_path
+    except subprocess.CalledProcessError as e:
+        print(f"Warning: ffmpeg normalization failed, using raw vocals: {e.stderr}")
+        return vocals_path
 
 
 def get_audio_volume_metrics(input_file):

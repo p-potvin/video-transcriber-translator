@@ -28,6 +28,7 @@ def transcribe_video(
     vad_filter=True,
     vad_threshold=None,
     isolate_vocals=True,
+    source_language=None,
 ):
     # Validate input file
     if not os.path.isfile(input_file):
@@ -67,30 +68,34 @@ def transcribe_video(
             print(f"Isolating vocals with Demucs to remove background noise (GPU acceleration enabled)...")
             temp_dir = tempfile.mkdtemp(prefix="demucs_")
             try:
+                # Extract audio to a temporary WAV first to prevent A/V track desync/delays.
+                # Passing mp4/mkv directly to Demucs often ignores container start-time offsets.
+                extracted_wav_path = os.path.join(temp_dir, "extracted_audio.wav")
+                media.extract_audio_to_wav(input_file, extracted_wav_path, normalize=False)
+                
                 # This automatically executes on the GPU via device="cuda"
-                vocals_path = media.isolate_vocals_with_demucs(input_file, temp_dir, device="cuda")
+                vocals_path = media.isolate_vocals_with_demucs(extracted_wav_path, temp_dir, device="cuda")
                 transcription_file = vocals_path
             except Exception as e:
                 print(f"Warning: Vocal isolation failed: {e}. Falling back to original audio.")
                 transcription_file = input_file
 
-        if vad_filter:
-            if vad_threshold is None or vad_threshold == "auto" or vad_threshold == 0.0:
-                # With isolated vocals, a clean threshold of 0.35 is generally perfect.
-                vad_threshold = 0.35
-                print(f"Using optimal auto-VAD threshold for pure vocals: {vad_threshold:.2f}")
-
         print(f"Transcribing: {input_file} (VAD filter: {vad_filter}, threshold: {vad_threshold})")
         start_ts = time.time()
         
+        vad_params = dict(threshold=vad_threshold) if vad_threshold is not None else dict(threshold=0.5)
+
         # Transcribe once to get segments and language info
         all_segments, info = model.transcribe(
             transcription_file, 
             beam_size=5, 
             task="transcribe", 
             vad_filter=vad_filter,
-            vad_parameters=dict(threshold=vad_threshold) if vad_filter else None
+            vad_parameters=vad_params if vad_filter else None,
+            language=source_language,
+            condition_on_previous_text=False  # Prevents Whisper from hallucinating loops during absolute silence
         )
+        
         all_segments = list(all_segments)
         elapsed_total = time.time() - start_ts
         print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
@@ -98,12 +103,12 @@ def transcribe_video(
         print(f"Transcription elapsed: {elapsed_total:.1f}s")
         original_texts = [segment.text for segment in all_segments]
     finally:
-        # Cleanup temporary audio directory
         if temp_dir and os.path.exists(temp_dir):
             try:
+                import shutil
                 shutil.rmtree(temp_dir)
             except Exception as e:
-                print(f"Warning: Failed to clean up temporary audio directory {temp_dir}: {e}")
+                print(f"Warning: Failed to clean up temp directory {temp_dir}: {e}")
 
     # --- Step 2: Prepare output file paths and contents ---
     base_path = os.path.splitext(input_file)[0]

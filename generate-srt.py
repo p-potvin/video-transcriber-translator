@@ -31,8 +31,9 @@ def main():
     parser.add_argument("--continue-on-error", action="store_true", help="For scan mode, continue to next file when one fails")
     parser.add_argument("--overwrite", action="store_true", dest="overwrite", default=False, help="Overwrite existing SRT files")
     parser.add_argument("--no-vad-filter", action="store_false", dest="vad_filter", default=True, help="Disable VAD filtering for more accurate timestamps (default is enabled).")
-    parser.add_argument("--vad-threshold", type=float, default=0.0, help="VAD threshold (0-1). Set to 0.0 for optimal automatic detection for pure vocals (recommended).")
+    parser.add_argument("--vad-threshold", type=float, default=0.2, help="VAD threshold (0-1). Default 0.2 handles isolated vocals well without hallucinating.")
     parser.add_argument("--no-isolate-vocals", dest="isolate_vocals", action="store_false", default=True, help="Disable AI vocal isolation (Demucs). Vocal isolation perfectly removes noise before transcription.")
+    parser.add_argument("--source-language", default=None, help="Force Whisper to use a specific source language (e.g. 'en', 'es'). Prevents language-switching hallucinations.")
     parser.add_argument("--extensions", default=".mp4,.mkv,.avi,.mov,.flv,.webm,.mp3,.wav,.m4a", help="Comma-separated media extensions for scan mode",
     )
 
@@ -86,6 +87,7 @@ def main():
                     vad_filter=args.vad_filter,
                     vad_threshold=args.vad_threshold,
                     isolate_vocals=args.isolate_vocals,
+                    source_language=args.source_language,
                 )
                 print(f"Done: {path} -> {len(outputs)} output files")
                 successes.append(path)
@@ -118,6 +120,7 @@ def main():
             vad_filter=args.vad_filter,
             vad_threshold=args.vad_threshold,
             isolate_vocals=args.isolate_vocals,
+            source_language=args.source_language,
         )
 
 
