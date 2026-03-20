@@ -54,12 +54,39 @@ def extract_audio_to_wav(input_file, output_wav, normalize=False):
 
 
 def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
+    import sys
     os.makedirs(output_dir, exist_ok=True)
-    cmd = ["demucs", "--two-stems=vocals", "-o", output_dir, input_audio]
+    cmd = [sys.executable, "-m", "demucs.separate", "--two-stems=vocals", "-o", output_dir, input_audio]
     if device == "cuda":
-        cmd.insert(1, "-d")
-        cmd.insert(2, "cuda")
-    subprocess.run(cmd, check=True, capture_output=True, text=True)
+        cmd.insert(3, "-d")
+        cmd.insert(4, "cuda")
+    
+    try:
+        subprocess.run(cmd, check=True, capture_output=True, text=True)
+    except subprocess.CalledProcessError as e:
+        stderr_out = e.stderr if e.stderr else ""
+        
+        # If it failed due to CUDA (PyTorch CPU only, or out of VRAM), fallback to CPU
+        if device == "cuda" and ("CUDA" in stderr_out or "device" in stderr_out.lower() or "AssertionError" in stderr_out or "RuntimeError" in stderr_out):
+            print(f"\n[Demucs] CUDA error encountered, retrying on CPU. (Error: {stderr_out.strip()[-200:]})")
+            cmd.remove("-d")
+            cmd.remove("cuda")
+            try:
+                subprocess.run(cmd, check=True, capture_output=True, text=True)
+            except subprocess.CalledProcessError as e2:
+                raise RuntimeError(f"Demucs CPU fallback failed. Error:\n{e2.stderr}")
+        else:
+            raise RuntimeError(f"Demucs failed. Error:\n{stderr_out}")
+    except FileNotFoundError:
+        # Fallback if python module is not working
+        cmd = ["demucs", "--two-stems=vocals", "-o", output_dir, input_audio]
+        if device == "cuda":
+            cmd.insert(1, "-d")
+            cmd.insert(2, "cuda")
+        try:
+            subprocess.run(cmd, check=True, capture_output=True, text=True)
+        except subprocess.CalledProcessError as e3:
+            raise RuntimeError(f"Demucs CLI failed. Error:\n{e3.stderr}")
 
     vocals_path = None
     for root, _, files in os.walk(output_dir):

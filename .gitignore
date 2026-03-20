@@ -2,3 +2,4 @@ to_process
 __pycache__
 .vscode
 *.pyc
+venv
