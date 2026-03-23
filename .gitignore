@@ -1,5 +1,3 @@
 to_process
-__pycache__
-.vscode
-*.pyc
+video_transcriber/__pycache__/
 venv
