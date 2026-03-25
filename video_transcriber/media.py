@@ -61,12 +61,14 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
     input_audio_abs = os.path.abspath(input_audio)
     output_dir_abs = os.path.abspath(output_dir)
     
-    # Revert to WAV because Demucs MP3 encoding is creating silent files
     cmd = [sys.executable, "-m", "demucs.separate", "--two-stems=vocals", "-o", output_dir_abs, input_audio_abs]
     if device == "cuda":
         cmd.insert(3, "-d")
         cmd.insert(4, "cuda")
     
+    print(f"Running Demucs cmd: {' '.join(shlex.quote(arg) for arg in cmd)}")
+    print(f"Running vocal isolation on {input_audio}...")
+    import subprocess
     try:
         subprocess.run(cmd, check=True, capture_output=True, text=True)
     except subprocess.CalledProcessError as e:
@@ -75,8 +77,10 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
         # If it failed due to CUDA (PyTorch CPU only, or out of VRAM), fallback to CPU
         if device == "cuda" and ("CUDA" in stderr_out or "device" in stderr_out.lower() or "AssertionError" in stderr_out or "RuntimeError" in stderr_out):
             print(f"\n[Demucs] CUDA error encountered, retrying on CPU. (Error: {stderr_out.strip()[-200:]})")
-            cmd.remove("-d")
-            cmd.remove("cuda")
+            if "-d" in cmd:
+                idx = cmd.index("-d")
+                cmd.pop(idx) # remove -d
+                cmd.pop(idx) # remove cuda
             try:
                 subprocess.run(cmd, check=True, capture_output=True, text=True)
             except subprocess.CalledProcessError as e2:
@@ -105,9 +109,11 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
     if not vocals_path:
         raise RuntimeError("Voice isolation with Demucs did not produce vocals.wav")
         
-    # Normalize the vocals to ensure Whisper and its VAD can distinctly pick up the speech,
-    # as Demucs often produces very quiet audio outputs that get dropped by VAD or induce hallucinations.
-    normalized_path = vocals_path.replace(".wav", "_norm.wav")
+    # Create normalized path in the same directory as the input_audio to avoid 
+    # nested Demucs structure issues and ensure cleanup works as expected.
+    normalized_path = os.path.join(os.path.dirname(input_audio_abs), os.path.splitext(os.path.basename(input_audio))[0] + "_vocals_norm.wav")
+    print(f"{vocals_path} isolated, normalizing to {normalized_path}")
+
     try:
         subprocess.run(
             [

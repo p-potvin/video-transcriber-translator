@@ -41,6 +41,7 @@ async def translate_segments(
     if not texts:
         return []
 
+    print(f"Translating {texts}...")
     total_chars = sum(len(t) for t in texts)
     if total_chars > max_chars:
         raise RuntimeError(
@@ -77,12 +78,15 @@ async def translate_segments(
             # googletrans doesn't support bulk detection well with the Translator object in 4.0.0rc1
             # but we can at least handle the coroutine logic once and reuse the detector.
             
+            # Use tqdm to show translation progress
+            from tqdm import tqdm
             translated_texts = list(texts)
-            for idx in non_empty_indices:
+            for progress_idx, idx in enumerate(tqdm(non_empty_indices, desc=f"Translating to {target_lang}", unit="segment", colour="green")):
                 if calls > max_calls: 
                     raise RuntimeError("Translation request limit reached.")
                 
                 text = texts[idx]
+                tqdm.write(f"Processing segment {idx}: '{text[:50]}...'")
                 detection = detector.detect(text)
                 if inspect.isawaitable(detection):
                     detection = await detection
@@ -90,23 +94,25 @@ async def translate_segments(
                 detected_lang = str(getattr(detection, "lang", "auto")).lower().split("-")[0]
                 calls += 1
 
-                if detected_lang != target_lang_simple:
+                if detected_lang != target_lang_simple:                    
                     if not is_supported_language_code(detected_lang, translate_api=translate_api):
+                        detected_lang = target_lang_simple
                         # Some detections might be garbage; we could skip or fail. 
                         # Instructions say "Security First", but for translation, 
                         # skipping might be better than failing the whole file.
                         # However, to maintain current behavior:
-                        raise UnsupportedLanguageError(
+                        """raise UnsupportedLanguageError(
                             f"Detected unsupported source language '{detected_lang}' for translation."
-                        )
+                        )"""
                     
                     if calls > max_calls: 
                         raise RuntimeError("Translation request limit reached.")
                     
                     try:
                         # Jittered delay to avoid rate limiting and allow background processing
-                        time.sleep(random.uniform(0.1, 0.4))
-                        result = GoogleTranslator(source=detected_lang, target=target_lang).translate(text)
+                        #time.sleep(random.uniform(0.1, 0.2))
+                        #result = GoogleTranslator(source=detected_lang, target=target_lang).translate(text)
+                        result = GoogleTranslator(target=target_lang).translate(text)
                         if isinstance(result, str):
                             translated_texts[idx] = result
                         else:
@@ -120,12 +126,17 @@ async def translate_segments(
             return translated_texts
 
         # "all" mode for deep-translator
-        for text in texts:
+        from tqdm import tqdm
+        for i, text in enumerate(tqdm(texts, desc=f"Translating to {target_lang}", unit="segment", colour="blue")):
             calls += 1
             if calls > max_calls: raise RuntimeError("Translation request limit reached.")
             if not text.strip():
                 translated_texts.append(text)
                 continue
+            
+            tqdm.write(f"Translating segment {i}: '{text[:50]}...'")
+            # Jittered delay to avoid rate limiting
+            #time.sleep(random.uniform(0.1, 0.2))
             result = GoogleTranslator(source="auto", target=target_lang).translate(text)
             if isinstance(result, str):
                 translated_texts.append(result)

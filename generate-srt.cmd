@@ -1,2 +1,2 @@
 @echo off
-python "%~dp0generate-srt.py" %*
+.venv\Scripts\python.exe "%~dp0generate-srt.py" %*
