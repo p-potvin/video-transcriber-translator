@@ -71,7 +71,7 @@ async def translate_segments(
             # Optimization: Pre-detect languages for all non-empty segments
             non_empty_indices = [i for i, text in enumerate(texts) if text.strip()]
             non_empty_texts = [texts[i] for i in non_empty_indices]
-            
+
             if not non_empty_texts:
                 return texts
 
@@ -87,28 +87,28 @@ async def translate_segments(
                 
                 text = texts[idx]
                 tqdm.write(f"Processing segment {idx}: '{text}'")
-                detection = detector.detect(text)
-                if inspect.isawaitable(detection):
-                    detection = await detection
+                #detection = detector.detect(text)
+                #if inspect.isawaitable(detection):
+                #    detection = await detection
                 
-                detected_lang = str(getattr(detection, "lang", "auto")).lower().split("-")[0]
+                #detected_lang = str(getattr(detection, "lang", "auto")).lower().split("-")[0]
                 calls += 1
 
-                if detected_lang != target_lang_simple:                    
-                    if not is_supported_language_code(detected_lang, translate_api=translate_api):
-                        detected_lang = target_lang_simple
+                #if detected_lang != target_lang_simple:                    
+                    #if not is_supported_language_code(detected_lang, translate_api=translate_api):
+                detected_lang = target_lang_simple
                     
-                    try:
-                        result = GoogleTranslator(target=target_lang).translate(text)
-                        if isinstance(result, str):
-                            translated_texts[idx] = result
-                        else:
-                            translated_texts[idx] = getattr(result, "text", text)
-                        calls += 1
-                    except LanguageNotSupportedException as exc:
-                        raise UnsupportedLanguageError(
-                            f"Detected unsupported source language '{detected_lang}' for translation."
-                        ) from exc
+                try:
+                    result = GoogleTranslator(target=target_lang).translate(text)
+                    if isinstance(result, str):
+                        translated_texts[idx] = result
+                    else:
+                        translated_texts[idx] = getattr(result, "text", text)
+                    calls += 1
+                except LanguageNotSupportedException as exc:
+                    raise UnsupportedLanguageError(
+                        f"Detected unsupported source language '{detected_lang}' for translation."
+                    ) from exc
             
             return translated_texts
 

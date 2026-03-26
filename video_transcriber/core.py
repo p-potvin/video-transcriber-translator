@@ -253,7 +253,8 @@ def transcribe_video(
                     translate_mode = translate_mode,
                     max_chars = max_translate_chars,
                     max_calls = max_translate_calls,
-                    detector = None
+                    detector = None,
+                    
                 ))
                 trans_elapsed = time.time() - trans_start_ts
                 print(f"Translation to {lang_code} completed in {trans_elapsed:.2f}s")
