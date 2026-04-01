@@ -28,7 +28,7 @@ def get_whisper_model():
     if _WHISPER_MODEL is None:
         from faster_whisper import WhisperModel
         with utils.spinning_cursor("Initializing Whisper Machine Learning Model..."):
-            _WHISPER_MODEL = WhisperModel("medium", device = "cuda", compute_type = "int8_float16")
+            _WHISPER_MODEL = WhisperModel("large-v3-turbo", device = "cuda", compute_type = "int8")
     return _WHISPER_MODEL
 
 def transcribe_video(
@@ -85,7 +85,6 @@ def transcribe_video(
         
         with temporary_directory(prefix = "demucs_") as temp_dir:    
             try:               
-                start_step = time.time()
                 audio = AudioSegment.from_file(transcription_file)
                 min_chunk_length_ms = 800
                 min_silence_length_ms = 400  
@@ -96,7 +95,8 @@ def transcribe_video(
                     audio,
                     min_silence_len = min_silence_length_ms,
                     silence_thresh = silence_threshold_db,
-                    keep_silence = 100
+                    keep_silence = 100,
+                    seek_step = 10
                 )
 
                 print(f"Audio split into {len(chunks)} chunks based on silence detection.")
@@ -106,9 +106,7 @@ def transcribe_video(
                 
                 # Keep chunks >= min_chunk_length_ms                
                 for i, chunk in enumerate(chunks):
-                    print(f"Chunk {i}, duration: {chunk.duration_seconds} seconds, {chunk.dBFS:.2f} dBFS")
                     if len(chunk) >=  min_chunk_length_ms:
-                        print(f"Chunk {i}")
                         chunkPath = os.path.join(temp_dir, f"chunk{i}")
                         os.makedirs(chunkPath, exist_ok = True)
 
@@ -136,11 +134,9 @@ def transcribe_video(
                         # Offset the segment timestamps by the current total duration
                         # and collect them into a single list
                         for segment in chunk_segments:
-                            
-                            start_time = segment.start + current_time_offset
-                            end_time = segment.end + current_time_offset
-                            print(f"Current Time Offset: {current_time_offset}, Segment start: {start_time}, text: {segment.text}")
-                            
+                            start_time = current_time_offset + segment.start
+                            end_time = current_time_offset + segment.end
+
                             # Use a dictionary or a SimpleNamespace to ensure attributes are accessible via .start/.end
                             from types import SimpleNamespace
                             updated_segment = SimpleNamespace(
@@ -157,8 +153,9 @@ def transcribe_video(
                             segmentId +=  1
                             all_segments.append(updated_segment)
                             original_texts.append(updated_segment.text)
-                        
-                    current_time_offset +=  chunk.duration_seconds
+
+                    current_time_offset += chunk.duration_seconds                        
+                    print(f"Finished {i}: {chunk.duration_seconds} seconds chunk. Total time offset is now {current_time_offset:.2f} seconds.")
                         
             except Exception as e:
                 print(f"Warning: Vocal isolation failed: {e}. Falling back to original audio.")
@@ -245,7 +242,6 @@ def transcribe_video(
             try:
                 # 'non-target' mode in translation module correctly identifies 
                 # segments that don't match lang_code and translates only those.
-                print(f"Texts: {original_texts}")
                 translated_texts = asyncio.run(translation.translate_segments(
                     original_texts,
                     target_lang = lang_code,
@@ -254,7 +250,7 @@ def transcribe_video(
                     max_chars = max_translate_chars,
                     max_calls = max_translate_calls,
                     detector = None,
-                    
+
                 ))
                 trans_elapsed = time.time() - trans_start_ts
                 print(f"Translation to {lang_code} completed in {trans_elapsed:.2f}s")
