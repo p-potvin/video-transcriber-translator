@@ -95,14 +95,15 @@ def isolate_vocals_with_demucs(input_audio, output_dir, device="cuda"):
             raise RuntimeError(f"Demucs CLI failed. Error:\n{e3.stderr}")
 
     vocals_path = None
+    # Demucs version 4+ uses htdemucs/model_name/filename/vocals.wav structure
     for root, _, files in os.walk(output_dir_abs):
         for file in files:            
             if file == "vocals.wav":
-                vocals_path = os.path.join(root, file) 
+                vocals_path = os.path.join(root, file)
                 break
-
         if vocals_path:
             break
+            
     if not vocals_path:
         raise RuntimeError("Voice isolation with Demucs did not produce vocals.wav")
         

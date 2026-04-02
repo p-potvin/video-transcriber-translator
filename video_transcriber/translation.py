@@ -30,7 +30,7 @@ def is_supported_language_code(lang_code, translate_api="deep-translator", allow
     return normalized_lang in get_supported_language_codes(translate_api)
 
 async def translate_segments(
-    texts,
+    segments, # List of segment objects with .text and .language
     target_lang: str,
     translate_api="deep-translator",
     max_chars=350000,
@@ -38,10 +38,13 @@ async def translate_segments(
     translate_mode="non-target",
     detector=None,
 ):
-    if not texts:
+    if not segments:
         return []
 
-    total_chars = sum(len(t) for t in texts)
+    # Check if we got a list of strings or objects. Maintain backward compatibility.
+    is_list_of_strings = all(isinstance(s, str) for s in segments)
+    
+    total_chars = sum(len(s if is_list_of_strings else s.text) for s in segments)
     if total_chars > max_chars:
         raise RuntimeError(
             f"Translation skipped: text length {total_chars} > max_chars {max_chars}. "
@@ -66,20 +69,43 @@ async def translate_segments(
             detector = GoogleTrans_Detector()
 
         if translate_mode == "non-target":            
-            non_empty_indices = [i for i, text in enumerate(texts) if text.strip()]
+            # Identify which segments need translation
+            indices_to_translate = []
+            
+            for i, s in enumerate(segments):
+                text = s if is_list_of_strings else s.text
+                if not text.strip():
+                    continue
+                
+                # Logic: Skip translation if segment language matches target language
+                # If we only have text, we must detect.
+                if is_list_of_strings:
+                    indices_to_translate.append(i)
+                else:
+                    # Segment language might be 'en', target might be 'en'
+                    if (s.language or "").lower() != target_lang.lower():
+                        indices_to_translate.append(i)
 
-            if not non_empty_indices:
-                return texts
+            if not indices_to_translate:
+                return [s if is_list_of_strings else s.text for s in segments]
 
-            translated_texts = list(texts)
-            for idx in non_empty_indices:
+            translated_texts = [s if is_list_of_strings else s.text for s in segments]
+            
+            for idx in indices_to_translate:
                 if calls > max_calls: 
                     raise RuntimeError("Translation request limit reached.")
                 
-                text = texts[idx]
-                calls += 1
-
+                text = translated_texts[idx]
+                
+                # Perform second-pass detection if we're not sure, or just translate.
+                # Since we want to handle mixed language better, we check if the 
+                # individual segment's language (from Whisper) is different from target.
+                
                 try:
+                    # Double-check with detector if Whisper thought it was target but it might not be,
+                    # OR if we want to be absolutely sure.
+                    # For now, let's trust Whisper's segment language if present.
+                    
                     result = GoogleTranslator(target=target_lang).translate(text)
 
                     if isinstance(result, str):
@@ -99,7 +125,8 @@ async def translate_segments(
 
         # "all" mode for deep-translator
         from tqdm import tqdm
-        for i, text in enumerate(tqdm(texts, desc=f"Translating to {target_lang}", unit="segment", colour="blue")):
+        input_texts = [s if is_list_of_strings else s.text for s in segments]
+        for i, text in enumerate(tqdm(input_texts, desc=f"Translating to {target_lang}", unit="segment", colour="blue")):
             calls += 1
             if calls > max_calls: raise RuntimeError("Translation request limit reached.")
             if not text.strip():

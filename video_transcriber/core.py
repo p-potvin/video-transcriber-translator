@@ -28,7 +28,8 @@ def get_whisper_model():
     if _WHISPER_MODEL is None:
         from faster_whisper import WhisperModel
         with utils.spinning_cursor("Initializing Whisper Machine Learning Model..."):
-            _WHISPER_MODEL = WhisperModel("large-v3-turbo", device = "cuda", compute_type = "int8")
+            # Use float16 for better timing precision on CUDA
+            _WHISPER_MODEL = WhisperModel("large-v3-turbo", device = "cuda", compute_type = "float16")
     return _WHISPER_MODEL
 
 def transcribe_video(
@@ -80,96 +81,62 @@ def transcribe_video(
     transcription_file = input_file
     
     if isolate_vocals:
-        from pydub import AudioSegment
-        from pydub.silence import split_on_silence
-        
         with temporary_directory(prefix = "demucs_") as temp_dir:    
             try:               
-                audio = AudioSegment.from_file(transcription_file)
-                min_chunk_length_ms = 800
-                min_silence_length_ms = 400  
-                silence_threshold_db = -40
-
-                # Defaults are 800ms and -40dBFS
-                chunks = split_on_silence(
-                    audio,
-                    min_silence_len = min_silence_length_ms,
-                    silence_thresh = silence_threshold_db,
-                    keep_silence = 100,
-                    seek_step = 10
-                )
-
-                print(f"Audio split into {len(chunks)} chunks based on silence detection.")
+                # Isolate vocals for the entire file once to maximize GPU efficiency and RTF.
+                # Processing in one batch prevents the overhead of repetitive process spawning.
+                print(f"--- Isolating Vocals (Full File) ---")
+                isolated_audio_file = media.isolate_vocals_with_demucs(transcription_file, temp_dir, device = "cuda")
                 
-                current_time_offset = 0.0
-                segmentId = 0
+                # Transcribe the isolated audio using Silero VAD for speed and accuracy
+                print(f"--- Transcribing Isolated Vocals (Silero VAD) ---")
+                segments_generator, info = model.transcribe(
+                    isolated_audio_file, 
+                    beam_size = 5, 
+                    task = "transcribe", 
+                    vad_filter = True, 
+                    # dict(min_silence_duration_ms=500, speech_pad_ms=400) ensures lead-in alignment
+                    vad_parameters = dict(min_silence_duration_ms=500, speech_pad_ms=400),
+                    multilingual = True,
+                    condition_on_previous_text = False, # Set to False to prevent language-lock
+                    word_timestamps = True
+                )                     
                 
-                # Keep chunks >= min_chunk_length_ms                
-                for i, chunk in enumerate(chunks):
-                    if len(chunk) >=  min_chunk_length_ms:
-                        chunkPath = os.path.join(temp_dir, f"chunk{i}")
-                        os.makedirs(chunkPath, exist_ok = True)
-
-                        chunkName = os.path.join(chunkPath, f"chunk.wav")
-                        chunk.export(chunkName, format = "wav")                   
-                                        
-                        # Isolate vocals for this chunk
-                        isolatedChunk = media.isolate_vocals_with_demucs(chunkName, chunkPath, device = "cuda")
-                                               
-                        # Transcribe the isolated chunk
-                        segments_generator, info = model.transcribe(
-                            isolatedChunk, 
-                            beam_size = 5, 
-                            task = "transcribe", 
-                            vad_filter = vad_filter,
-                            vad_parameters = vad_params if vad_filter else None,
-                            multilingual = True,
-                            condition_on_previous_text = True,
-                            word_timestamps = True
-                        )                     
-                        
-                        # Consume the generator into a list to allow multiple iterations and check content
-                        chunk_segments = list(segments_generator)
-
-                        # Offset the segment timestamps by the current total duration
-                        # and collect them into a single list
-                        for segment in chunk_segments:
-                            start_time = current_time_offset + segment.start
-                            end_time = current_time_offset + segment.end
-
-                            # Use a dictionary or a SimpleNamespace to ensure attributes are accessible via .start/.end
-                            from types import SimpleNamespace
-                            updated_segment = SimpleNamespace(
-                                id = segmentId,
-                                start = start_time,
-                                end = end_time,
-                                text = segment.text,
-                                words = segment.words,
-                                tokens = segment.tokens,
-                                avg_logprob = segment.avg_logprob,
-                                no_speech_prob = segment.no_speech_prob
-                            )
-
-                            segmentId +=  1
-                            all_segments.append(updated_segment)
-                            original_texts.append(updated_segment.text)
-
-                    current_time_offset += chunk.duration_seconds                        
-                    print(f"Finished {i}: {chunk.duration_seconds} seconds chunk. Total time offset is now {current_time_offset:.2f} seconds.")
+                all_segments = list(segments_generator)
+                if all_segments:
+                    print(f"First segment starts at: {all_segments[0].start:.2f}s")
+                
+                # Check for segment-level language info if available in this version of faster-whisper
+                # and attach it to our segments. If not, we'll use the global detection as a base.
+                for segment in all_segments:
+                    if not hasattr(segment, 'language'):
+                        segment.language = info.language
+                
+                original_texts = [segment.text for segment in all_segments]
+                print(f"Detected global language '{info.language}' with probability {info.language_probability:.2f}")
+                print(f"Segments generated: {len(all_segments)}")
+                
+                # Cleanup normalized vocals file if it was created
+                if isolated_audio_file and os.path.exists(isolated_audio_file):
+                    try:
+                        os.remove(isolated_audio_file)
+                        print(f"Successfully cleaned up isolated vocals: {os.path.basename(isolated_audio_file)}")
+                    except Exception as e:
+                        print(f"Warning: Failed to clean up {isolated_audio_file}: {e}")
                         
             except Exception as e:
                 print(f"Warning: Vocal isolation failed: {e}. Falling back to original audio.")
 
                 # Fallback to standard transcription if chunking/isolation failed
-                print(f"--- Transcription (Fallback) ---")
-                vad_params = dict(threshold = vad_threshold) if vad_threshold is not None else dict(threshold = 0.35)
+                print(f"--- Transcription (Fallback with Silero VAD) ---")
                 segments, info = model.transcribe(
                     input_file, 
                     beam_size = 5, 
                     task = "transcribe", 
-                    vad_filter = vad_filter,
-                    vad_parameters = vad_params if vad_filter else None,
+                    vad_filter = True,
+                    vad_parameters = dict(min_silence_duration_ms=500, speech_pad_ms=400),
                     multilingual = True,
+                    condition_on_previous_text = False,
                     word_timestamps = True,
                 )
                 all_segments = list(segments)
@@ -178,28 +145,32 @@ def transcribe_video(
         print(f"--- Skip to Transcription ---")
         start_ts = time.time()
         
-        vad_params = dict(threshold = vad_threshold) if vad_threshold is not None else dict(threshold = 0.35)
-
         # --- Transcribe exactly as is (no translation at this step) ---
-        print("Running transcribing exactly as is...")
+        print("Running transcribing exactly as is (Silero VAD)...")
         all_segments, info = model.transcribe(
             transcription_file, 
             beam_size = 5, 
             task = "transcribe", 
-            vad_filter = vad_filter,
-            vad_parameters = vad_params if vad_filter else None,
+            vad_filter = True,
+            vad_parameters = dict(min_silence_duration_ms=500, speech_pad_ms=400),
             multilingual = True,
             word_timestamps = True,  # Crucial for precise SRT timing
             initial_prompt = "I am transcribing as-is clear dialogue, in its original language. There may be many languages spoken and they must remain in their original language.", # Guide the model
-            condition_on_previous_text = True,
+            condition_on_previous_text = False, # Set to False to prevent sticking to one language
             compression_ratio_threshold = 2.4, # standard fallback trigger
             log_prob_threshold = -1.0,         # standard fallback trigger
-            no_speech_threshold = 0.6          # filter out silence properly
+            no_speech_threshold = 0.6          # filter out detections with high no-speech prob
         )
         
         all_segments = list(all_segments)
+        if all_segments:
+            print(f"First segment starts at: {all_segments[0].start:.2f}s")
+        for segment in all_segments:
+            if not hasattr(segment, 'language'):
+                segment.language = info.language
+
         elapsed_total = time.time() - start_ts
-        print(f"Detected language '{info.language}' with probability {info.language_probability:.2f}")
+        print(f"Detected global language '{info.language}' with probability {info.language_probability:.2f}")
         print(f"Segments generated: {len(all_segments)}")
         print(f"Transcription completed in {elapsed_total:.2f}s")
         original_texts = [segment.text for segment in all_segments]
@@ -240,17 +211,15 @@ def transcribe_video(
             import asyncio
             trans_start_ts = time.time()
             try:
-                # 'non-target' mode in translation module correctly identifies 
-                # segments that don't match lang_code and translates only those.
+                # Use metadata from segments to guide translation
                 translated_texts = asyncio.run(translation.translate_segments(
-                    original_texts,
+                    all_segments,
                     target_lang = lang_code,
                     translate_api = translate_api,
                     translate_mode = translate_mode,
                     max_chars = max_translate_chars,
                     max_calls = max_translate_calls,
                     detector = None,
-
                 ))
                 trans_elapsed = time.time() - trans_start_ts
                 print(f"Translation to {lang_code} completed in {trans_elapsed:.2f}s")
