@@ -1,4 +1,6 @@
 import argparse
+from faulthandler import dump_traceback_later
+from mimetypes import suffix_map
 import os
 import sys
 import time
@@ -21,6 +23,7 @@ def main():
         help="Comma-separated target language codes for translation (e.g. en,es,fr). Generates <video>.<lang>.srt.",
     )
     parser.add_argument("--skip-original", action="store_true", help="Do not generate original-language SRT")
+    parser.add_argument("--skip-vocal-isolation", action="store_true", help="Skip vocal isolation with Demucs (faster but noisier)")
     parser.add_argument("--translate-api", default="deep-translator", help="Translator backend (googletrans or deep-translator)")
     parser.add_argument(
         "--translate-mode",
@@ -33,9 +36,6 @@ def main():
     parser.add_argument("--max-duration", type=float, default=7200, help="Max media duration in seconds to process (skip longer files)")
     parser.add_argument("--continue-on-error", action="store_true", help="For scan mode, continue to next file when one fails")
     parser.add_argument("--overwrite", action="store_true", dest="overwrite", default=False, help="Overwrite existing SRT files")
-    parser.add_argument("--no-vad-filter", action="store_false", dest="vad_filter", default=True, help="Disable VAD filtering for more accurate timestamps (default is enabled).")
-    parser.add_argument("--vad-threshold", type=float, default=0.05, help="VAD threshold (0-1). Default 0.35 handles isolated vocals well without hallucinating.")
-    parser.add_argument("--no-isolate-vocals", dest="isolate_vocals", action="store_false", default=True, help="Disable AI vocal isolation (Demucs). Vocal isolation perfectly removes noise before transcription.")
     parser.add_argument("--source-language", default=None, help="Force Whisper to use a specific source language (e.g. 'en', 'es'). Prevents language-switching hallucinations.")
     parser.add_argument("--extensions", default=".mp4,.mkv,.avi,.mov,.flv,.webm,.mp3,.wav,.m4a", help="Comma-separated media extensions for scan mode",
     )
@@ -60,20 +60,27 @@ def main():
         media_exts = [ext.strip().lower() for ext in args.extensions.split(",") if ext.strip()]
         matched = list(media.find_media_files(args.scan_dir, media_exts))
         if not matched:
-            print(f"No media files found under {args.scan_dir} with extensions {media_exts}")
-            return
+            raise FileNotFoundError(f"No media files found under {args.scan_dir} with accepted extensions: {media_exts}")
 
         print(f"Found {len(matched)} files. Processing recursively...")
         successes = []
         failures = []
         start_time = time.time()
-        for idx, path in enumerate(matched, start=1):
-            utils.print_progress(idx, len(matched), prefix="Scan progress", same_line=False)
+        total_media_duration = 0.0
+
+        for path in matched:
+            # Check audio duration before processing           
+            duration = media.get_audio_duration_seconds(path)
+
+            if duration is None or duration <= 0:
+                print(f"Skipping (invalid duration: {duration}): {path}")
+                failures.append((path, f"invalid duration: {duration}"))
+                continue
+
             if args.max_duration is not None:
-                duration = media.get_media_duration_seconds(path)
                 if duration is not None and duration > args.max_duration:
-                    print(f"Skipping (too long > {args.max_duration}s): {path} ({duration:.1f}s)")
-                    failures.append((path, f"duration {duration:.1f}s > max {args.max_duration}s"))
+                    print(f"Skipping (too long > {args.max_duration}s): {path} ({duration:.2f}s)")
+                    failures.append((path, f"duration {duration:.2f}s > max {args.max_duration}s"))
                     continue
 
             try:
@@ -82,47 +89,49 @@ def main():
                     output_file=None,
                     languages=languages,
                     skip_original=args.skip_original,
+                    skip_vocal_isolation=args.skip_vocal_isolation,
                     translate_api=args.translate_api,
                     translate_mode=args.translate_mode,
                     max_translate_chars=args.max_translate_chars,
                     max_translate_calls=args.max_translate_calls,
                     overwrite=args.overwrite,
-                    vad_filter=args.vad_filter,
-                    vad_threshold=args.vad_threshold,
-                    isolate_vocals=args.isolate_vocals,
                     source_language=args.source_language,
                 )
-                print(f"Done: {path} -> {len(outputs)} output files")
+
+                print(f"Done: {path} -> {len(outputs)} output files\n")
                 successes.append(path)
+                total_media_duration += duration
+
             except Exception as exc:
                 print(f"Failed for {path}: {exc}")
                 failures.append((path, str(exc)))
                 if not args.continue_on_error:
-                    break
+                    break            
 
         elapsed = time.time() - start_time
-        print("Scan completed.")
+        print("\n\nTranscription completed.")
         print(f"Success: {len(successes)} files")
         print(f"Failed: {len(failures)} files")
+
         if failures:
             for fail_path, reason in failures:
-                print(f" - {fail_path}: {reason}")
-        print(f"Total time: {elapsed:.1f}s")
+                print(f" - {os.path.abspath(fail_path)}: {reason}")
 
-    else:        
+        print(f"Total time: {elapsed:.2f}s")
+        print(f"Total media duration processed: {utils.format_time(total_media_duration)}")
+
+    else:
         core.transcribe_video(
             args.input_file,
             output_file=args.output_file,
             languages=languages,
             skip_original=args.skip_original,
+            skip_vocal_isolation=args.skip_vocal_isolation,
             translate_api=args.translate_api,
             translate_mode=args.translate_mode,
             max_translate_chars=args.max_translate_chars,
             max_translate_calls=args.max_translate_calls,
             overwrite=args.overwrite,
-            vad_filter=args.vad_filter,
-            vad_threshold=args.vad_threshold,
-            isolate_vocals=args.isolate_vocals,
             source_language=args.source_language,
         )
 

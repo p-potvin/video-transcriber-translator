@@ -3,3 +3,4 @@ googletrans==4.0.0-rc1
 deep-translator==1.11.1
 demucs
 pydub==0.25.1
+halo==0.0.31

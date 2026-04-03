@@ -30,18 +30,18 @@ def is_supported_language_code(lang_code, translate_api="deep-translator", allow
     return normalized_lang in get_supported_language_codes(translate_api)
 
 async def translate_segments(
-    segments, # List of segment objects with .text and .language
+    segments,
     target_lang: str,
     translate_api="deep-translator",
-    max_chars=350000,
-    max_calls=250,
+    max_chars=750000,
+    max_calls=1000,
     translate_mode="non-target",
     detector=None,
 ):
     if not segments:
         return []
 
-    # Check if we got a list of strings or objects. Maintain backward compatibility.
+    # Check if we got a list of strings or objects. Maintain backwards compatibility.
     is_list_of_strings = all(isinstance(s, str) for s in segments)
     
     total_chars = sum(len(s if is_list_of_strings else s.text) for s in segments)
@@ -83,7 +83,9 @@ async def translate_segments(
                     indices_to_translate.append(i)
                 else:
                     # Segment language might be 'en', target might be 'en'
-                    if (s.language or "").lower() != target_lang.lower():
+                    # If language is None or missing, it will be translated with source="auto"
+                    current_lang = getattr(s, 'language', None) or ""
+                    if current_lang.lower() != target_lang.lower():
                         indices_to_translate.append(i)
 
             if not indices_to_translate:
@@ -97,15 +99,7 @@ async def translate_segments(
                 
                 text = translated_texts[idx]
                 
-                # Perform second-pass detection if we're not sure, or just translate.
-                # Since we want to handle mixed language better, we check if the 
-                # individual segment's language (from Whisper) is different from target.
-                
-                try:
-                    # Double-check with detector if Whisper thought it was target but it might not be,
-                    # OR if we want to be absolutely sure.
-                    # For now, let's trust Whisper's segment language if present.
-                    
+                try:                    
                     result = GoogleTranslator(target=target_lang).translate(text)
 
                     if isinstance(result, str):

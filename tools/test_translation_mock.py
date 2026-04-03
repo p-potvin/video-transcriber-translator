@@ -39,15 +39,38 @@ sys.modules["googletrans"] = googletrans
 # Now import the project's translation module and run a test
 from video_transcriber import translation
 
+# Test 1: List of strings (Backwards compatibility)
 texts = ["Hello world", "Hola spanish amigos"]
-print("Input texts:", texts)
-res = asyncio.run(translation.translate_segments(
+print("Test 1: List of strings (Source 'auto' detection expected)")
+res1 = asyncio.run(translation.translate_segments(
     texts,
     target_lang="es",
     translate_api="deep-translator",
     translate_mode="non-target",
-    max_chars=10000,
-    max_calls=10,
-    detector=None
 ))
-print("Translated:", res)
+print("Result 1:", res1)
+
+# Test 2: List of segment objects with mixed languages
+class Segment:
+    def __init__(self, text, language=None):
+        self.text = text
+        self.language = language
+
+segments = [
+    Segment("Hello world", language="en"),
+    Segment("Hola spanish amigos", language="es"),
+    Segment("Guten Tag", language=None) # Should be detected and translated
+]
+
+print("\nTest 2: Segment objects (en, es, None) -> Target 'es'")
+res2 = asyncio.run(translation.translate_segments(
+    segments,
+    target_lang="es",
+    translate_api="deep-translator",
+    translate_mode="non-target",
+))
+print("Result 2:", res2)
+# Expected: 
+# 1. "en" -> translated
+# 2. "es" -> SKIPPED (same as target)
+# 3. None -> translated (detected)
