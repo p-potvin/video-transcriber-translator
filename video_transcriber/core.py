@@ -10,7 +10,7 @@ from video_transcriber import utils
 from video_transcriber import translation
 from video_transcriber import media
 
-_WHISPER_MODEL = None
+_PARAKEET_MODEL = None
 
 @contextmanager
 def temporary_directory(prefix = "transcriber_"):
@@ -24,13 +24,13 @@ def temporary_directory(prefix = "transcriber_"):
             except Exception as e:
                 print(f"Warning: Failed to clean up temp directory {temp_dir}: {e}")
 
-@Halo(text='Loading Whisper Model...', color='blue', spinner='star')
-def get_whisper_model():
-    global _WHISPER_MODEL
-    if _WHISPER_MODEL is None:
-        from faster_whisper import WhisperModel
-        _WHISPER_MODEL = WhisperModel("large-v3-turbo", device = "cuda", compute_type = "float16")
-    return _WHISPER_MODEL
+@Halo(text='Loading Parakeet Model...', color='blue', spinner='star')
+def get_parakeet_model():
+    global _PARAKEET_MODEL
+    if _PARAKEET_MODEL is None:
+        from video_transcriber.parakeet_wrapper import ParakeetTranscriber
+        _PARAKEET_MODEL = ParakeetTranscriber()
+    return _PARAKEET_MODEL
 
 @Halo(text='Isolating vocals...', color='red', spinner='dots12')
 def get_isolated_vocals(input_file, temp_dir):    
@@ -57,7 +57,7 @@ def transcribe_video(
     max_translate_chars = 350000,
     max_translate_calls = 500,
     overwrite = False,
-    source_language = ["en"]
+    source_language = None,
 ):
     start_total = time.time()
     # Validate input file
@@ -71,20 +71,16 @@ def transcribe_video(
     if not overwrite and media.srt_files_exist(input_file, output_file, languages, skip_original):
         return []
 
-    # --- Vocal Isolation, Segmentation, Normalization and Transcription ---
-    model = get_whisper_model()
+    # --- Vocal Isolation and Transcription with Parakeet ---
+    # Parakeet-TDT produces word-level timestamps so segment boundaries are
+    # derived from actual voice pauses (gaps between recognised words).
+    # Background noise that is not decoded as speech can never delay a segment
+    # end — fixing the Silero-VAD issue where any sound above silence prevented
+    # the current segment from closing.
+    model = get_parakeet_model()
     all_segments = list()
     original_texts = []
     outputs_to_generate = {}
-    
-    # Tuned VAD parameters for more stable speech segments.
-    # min_silence_duration_ms: higher value (1000ms+) prevents cutting during natural phrasing pauses.
-    # speech_pad_ms: reduced to 250ms for cleaner cuts without trailing silence.
-    vad_parameters = dict(
-        min_silence_duration_ms = 1000,
-        speech_pad_ms = 250,
-        min_speech_duration_ms = 300
-    )
 
     print(f"--- Step 1: Isolating Vocals (Demucs) ---")
     with temporary_directory() as temp_dir:
@@ -94,33 +90,21 @@ def transcribe_video(
         else:
             transcription_file = get_isolated_vocals(input_file, temp_dir = temp_dir)
 
-        print(f"--- Step 2: Transcribing Isolated Vocals (Silero VAD) ---")
-        #with Halo(text="Transcribing with Whisper, using Silero VAD...", color="green", spinner="dots"):
+        print(f"--- Step 2: Transcribing Isolated Vocals (Parakeet-TDT) ---")
         print(transcription_file)
-        segments_generator, info = model.transcribe(
-            transcription_file, 
-            beam_size = 5, 
-            task = "transcribe", 
-            vad_filter = True, 
-            vad_parameters = vad_parameters,
-            multilingual = True,
-            condition_on_previous_text = False,
-            word_timestamps = True
+        all_segments = model.transcribe_file(
+            transcription_file,
+            language=source_language or "en",
         )
 
-        all_segments = list(segments_generator)
+    audio_duration = media.get_audio_duration_seconds(input_file) or 0.0
 
     if all_segments:
         print(f"First segment starts at: {all_segments[0].start:.2f}s and ends at {all_segments[0].end:.2f}s.")
 
-    # Remove global language assignment to allow per-segment language detection in translation.py
-    # for segment in all_segments:
-    #     if not hasattr(segment, 'language'):
-    #         segment.language = info.language
-    
     original_texts = [segment.text for segment in all_segments]
 
-    print(f"Segments generated: {len(original_texts)}. Total duration: {info.duration:.2f}s.")
+    print(f"Segments generated: {len(original_texts)}. Total duration: {audio_duration:.2f}s.")
     
     base_path = os.path.splitext(input_file)[0]
     output_base = os.path.splitext(output_file)[0] if output_file else base_path

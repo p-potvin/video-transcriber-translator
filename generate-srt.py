@@ -36,7 +36,7 @@ def main():
     parser.add_argument("--max-duration", type=float, default=7200, help="Max media duration in seconds to process (skip longer files)")
     parser.add_argument("--continue-on-error", action="store_true", help="For scan mode, continue to next file when one fails")
     parser.add_argument("--overwrite", action="store_true", dest="overwrite", default=False, help="Overwrite existing SRT files")
-    parser.add_argument("--source-language", default=None, help="Force Whisper to use a specific source language (e.g. 'en', 'es'). Prevents language-switching hallucinations.")
+    parser.add_argument("--source-language", default=None, help="Hint for the source language (e.g. 'en'). Informational for Parakeet; used if a multilingual model is loaded in the future.")
     parser.add_argument("--extensions", default=".mp4,.mkv,.avi,.mov,.flv,.webm,.mp3,.wav,.m4a", help="Comma-separated media extensions for scan mode",
     )
 
