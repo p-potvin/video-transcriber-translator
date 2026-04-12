@@ -10,6 +10,7 @@ from video_transcriber import utils
 from video_transcriber import translation
 from video_transcriber import media
 
+_WHISPER_MODEL = None
 _PARAKEET_MODEL = None
 
 @contextmanager
@@ -24,12 +25,12 @@ def temporary_directory(prefix = "transcriber_"):
             except Exception as e:
                 print(f"Warning: Failed to clean up temp directory {temp_dir}: {e}")
 
-@Halo(text='Loading Parakeet Model...', color='blue', spinner='star')
+@Halo(text='Loading Parakeet Model...', color='cyan', spinner='star')
 def get_parakeet_model():
     global _PARAKEET_MODEL
     if _PARAKEET_MODEL is None:
-        from video_transcriber.parakeet_wrapper import ParakeetTranscriber
-        _PARAKEET_MODEL = ParakeetTranscriber()
+        from video_transcriber.parakeet_wrapper import ParakeetV3Wrapper
+        _PARAKEET_MODEL = ParakeetV3Wrapper(model_name="nvidia/canary-1b")
     return _PARAKEET_MODEL
 
 @Halo(text='Isolating vocals...', color='red', spinner='dots12')
@@ -81,6 +82,19 @@ def transcribe_video(
     all_segments = list()
     original_texts = []
     outputs_to_generate = {}
+    # --- Vocal Isolation, Segmentation, Normalization and Transcription ---
+    all_segments = list()
+    original_texts = []
+    outputs_to_generate = {}
+    
+    # Tuned VAD parameters for more stable speech segments.
+    # min_silence_duration_ms: higher value (1000ms+) prevents cutting during natural phrasing pauses.
+    # speech_pad_ms: reduced to 250ms for cleaner cuts without trailing silence.
+    vad_parameters = dict(
+        min_silence_duration_ms = 500,
+        speech_pad_ms = 100,
+        min_speech_duration_ms = 300
+    )
 
     print(f"--- Step 1: Isolating Vocals (Demucs) ---")
     with temporary_directory() as temp_dir:
