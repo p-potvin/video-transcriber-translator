@@ -144,28 +144,23 @@ class ParakeetTranscriber:
                 c_path = f"{audio_path}_chunk_{len(chunk_paths)}.wav"
                 sf.write(c_path, chunk_data, samplerate)
                 chunk_paths.append((c_path, i / samplerate))
+                  # 2. Transcribe using batch_size=1. 
+            # Sequential processing (batch_size=1) is the most stable on Windows
+            # and prevents the "missed words" issue caused by batch interference.
+            # We avoid a manual loop to prevent CUDA illegal memory access errors.
+            with torch.no_grad():
+                paths_only = [p[0] for p in chunk_paths]
+                # num_workers=0 is mandatory on Windows to avoid WinError 32
+                hypotheses = self.model.transcribe(paths_only, timestamps=True, batch_size=1, num_workers=0)
             
-            # 2. Process chunks in groups of 4, flushing the CUDA cache between
-            # groups. This prevents VRAM fragmentation from degrading transcription
-            # quality on long videos (the main cause of missed words after ~10 min).
+            # Defragment once after the large batch
+            torch.cuda.synchronize()
+            torch.cuda.empty_cache()
             import gc
-            GROUP = 4
-            all_hypotheses = []
-
-            for g_start in range(0, len(chunk_paths), GROUP):
-                group = chunk_paths[g_start : g_start + GROUP]
-                paths_only = [p[0] for p in group]
-
-                with torch.no_grad():
-                    hyps = self.model.transcribe(paths_only, timestamps=True, batch_size=GROUP, num_workers=0)
-                all_hypotheses.extend(zip(group, hyps))
-
-                # Defragment VRAM between groups
-                torch.cuda.empty_cache()
-                gc.collect()
+            gc.collect()
 
             # 3. Merge timestamps with their respective time offsets
-            for (c_path, offset), hyp in all_hypotheses:
+            for (c_path, offset), hyp in zip(chunk_paths, hypotheses):
                 w_timestamps = self._extract_word_timestamps(hyp)
                 if w_timestamps:
                     for w in w_timestamps:
