@@ -80,6 +80,23 @@ def transcribe_video(
         min_speech_duration_ms = 300
     )
 
+    # --- Step 0: Warm-load Models ---
+    # Establishing the GPU context early prevents late-initialization CUDA errors 
+    # and eliminates weight-swap latency between Demucs and ASR.
+    if engine == "parakeet":
+        model = get_parakeet_model()
+    else:
+        from faster_whisper import WhisperModel
+        model = WhisperModel("large-v3", device="cuda", compute_type="float16")
+
+    # Ensure context is fully initialized before starting subprocesses
+    try:
+        import torch
+        if torch.cuda.is_available():
+            torch.cuda.synchronize()
+    except ImportError:
+        pass
+
     print(f"--- Step 1: Pre-processing (Fix Audio & Re-encode) ---")
     if progress_callback:
         progress_callback("Initiating Media Pipeline...", 5)
@@ -105,12 +122,6 @@ def transcribe_video(
         progress_callback("Extracting audio for ASR...", 48)
     asr_wav_file = media.extract_wav_for_asr(transcription_file)
     print(f"Source file for transcription (WAV): {asr_wav_file}")
-    
-    if engine == "parakeet":
-        model = get_parakeet_model()
-    else:
-        from faster_whisper import WhisperModel
-        model = WhisperModel("large-v3", device="cuda", compute_type="float16")
     
     if progress_callback:
         progress_callback("Step 2: Transcribing Audio...", 50)

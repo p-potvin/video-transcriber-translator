@@ -25,6 +25,10 @@ try:
     import lhotse
     # Permanently force the soundfile backend (bypasses FFmpeg C++ extension bugs entirely)
     lhotse.set_current_audio_backend("LibsndfileBackend")
+    
+    # Patch Lhotse to avoid CUDA illegal memory access during random seeding on Windows
+    import lhotse.utils
+    lhotse.utils.fix_random_seed = lambda seed: None
 except ImportError:
     pass
 
@@ -151,6 +155,7 @@ class ParakeetTranscriber:
             with torch.no_grad():
                 paths_only = [p[0] for p in chunk_paths]
                 # num_workers=0 is mandatory on Windows to avoid WinError 32
+                torch.cuda.synchronize()
                 hypotheses = self.model.transcribe(paths_only, timestamps=True, batch_size=1, num_workers=0)
             
             # Defragment once after the large batch

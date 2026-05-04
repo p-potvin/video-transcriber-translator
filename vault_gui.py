@@ -31,25 +31,77 @@ class TranscriptionWorker(QThread):
     def __init__(self, params):
         super().__init__()
         self.params = params
+        self.is_running = True
 
     def run(self):
         try:
-            self.progress.emit("Initializing Media Pipeline…")
+            input_path = self.params.get('input_file', '')
+            if not input_path:
+                self.error.emit("No input path provided.")
+                return
 
-            _last_text = [""]
+            # Determine files to process
+            files_to_process = []
+            if os.path.isdir(input_path):
+                extensions = ['.mp4', '.mkv', '.avi', '.mov', '.flv', '.webm', '.mp3', '.wav', '.m4a']
+                files_to_process = list(media.find_media_files(input_path, extensions))
+                if not files_to_process:
+                    self.error.emit(f"No media files found in directory: {input_path}")
+                    return
+            else:
+                files_to_process = [input_path]
 
-            def progress_cb(text, percent):
-                if text and text != _last_text[0]:
-                    self.progress.emit(text)
-                    _last_text[0] = text
-                if percent is not None:
-                    self.progress_percent.emit(percent)
+            total_files = len(files_to_process)
+            all_outputs = []
 
-            params_with_cb = dict(self.params)
-            params_with_cb['progress_callback'] = progress_cb
+            for i, file_path in enumerate(files_to_process):
+                if not self.is_running:
+                    break
 
-            output_paths = core.transcribe_video(**params_with_cb)
-            self.finished.emit(output_paths)
+                current_params = dict(self.params)
+                current_params['input_file'] = file_path
+                
+                file_basename = os.path.basename(file_path)
+                batch_prefix = f"[{i+1}/{total_files}] {file_basename}: " if total_files > 1 else ""
+                
+                self.progress.emit(f"{batch_prefix}Initializing…")
+
+                def progress_cb(text, percent):
+                    if text:
+                        self.progress.emit(f"{batch_prefix}{text}")
+                    if percent is not None:
+                        # Scale percent to be within the file's portion of the total progress
+                        overall_pct = int((i * 100 + percent) / total_files)
+                        self.progress_percent.emit(overall_pct)
+
+                current_params['progress_callback'] = progress_cb
+                current_params.pop('continue_on_error', None)
+                
+                try:
+                    output_paths = core.transcribe_video(**current_params)
+                    all_outputs.extend(output_paths)
+                except Exception as e:
+                    if self.params.get('continue_on_error', False):
+                        self.progress.emit(f"Error processing {file_basename}: {str(e)}")
+                        continue
+                    else:
+                        raise e
+                finally:
+                    # Cleanup GPU state between files in batch to prevent illegal memory access
+                    try:
+                        import torch
+                        if torch.cuda.is_available():
+                            try:
+                                torch.cuda.synchronize()
+                                torch.cuda.empty_cache()
+                            except:
+                                # Context might already be corrupted; ignore and move on
+                                pass
+                    except ImportError:
+                        pass
+                    time.sleep(2.0)
+
+            self.finished.emit(all_outputs)
         except Exception as e:
             import traceback
             self.error.emit(f"{str(e)}\n{traceback.format_exc()}")
@@ -190,11 +242,18 @@ class VaultWindow(QMainWindow):
         path_row = QHBoxLayout()
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("Drop a video/audio file or folder path…")
-        browse_btn = QPushButton("Browse…")
-        browse_btn.setFixedWidth(90)
-        browse_btn.clicked.connect(self.browse_input)
+        
+        browse_file_btn = QPushButton("File…")
+        browse_file_btn.setFixedWidth(70)
+        browse_file_btn.clicked.connect(self.browse_input_file)
+        
+        browse_folder_btn = QPushButton("Folder…")
+        browse_folder_btn.setFixedWidth(70)
+        browse_folder_btn.clicked.connect(self.browse_input_folder)
+        
         path_row.addWidget(self.input_edit)
-        path_row.addWidget(browse_btn)
+        path_row.addWidget(browse_file_btn)
+        path_row.addWidget(browse_folder_btn)
         layout.addLayout(path_row)
 
         layout.addWidget(self._make_separator())
@@ -383,11 +442,16 @@ class VaultWindow(QMainWindow):
 
     # ── Actions ──────────────────────────────────────────────────────────────
 
-    def browse_input(self):
+    def browse_input_file(self):
         path = QFileDialog.getOpenFileName(
             self, "Select Media File", "",
             "Media Files (*.mp4 *.mkv *.avi *.mov *.flv *.webm *.mp3 *.wav *.m4a);;All Files (*)"
         )[0]
+        if path:
+            self.input_edit.setText(path)
+
+    def browse_input_folder(self):
+        path = QFileDialog.getExistingDirectory(self, "Select Folder", "")
         if path:
             self.input_edit.setText(path)
 
@@ -429,6 +493,7 @@ class VaultWindow(QMainWindow):
             "delay_ms": self.delay_spin.value(),
             "source_language": self.src_lang_edit.text().strip() or None,
             "overwrite": self.overwrite_check.isChecked(),
+            "continue_on_error": self.continue_err_check.isChecked(),
         }
 
         self.start_btn.setEnabled(False)
