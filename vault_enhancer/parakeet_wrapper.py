@@ -50,7 +50,7 @@ class TranscriptSegment:
 
 class ParakeetTranscriber:
     """
-    ASR wrapper around NVIDIA Parakeet-TDT-1.1B using NeMo.
+    ASR wrapper around ``nvidia/parakeet-tdt-0.6b-v3`` using NeMo.
 
     Parakeet-TDT produces true word-level timestamps (start/end in seconds per
     recognised word).  Segment boundaries are derived from actual *voice* pauses
@@ -61,7 +61,7 @@ class ParakeetTranscriber:
 
     Flow
     ----
-    1. Load ``nvidia/parakeet-tdt-1.1b`` (English, TDT decoder, ~1.1 B params).
+    1. Load ``nvidia/parakeet-tdt-0.6b-v3`` (multilingual, ~600 M params).
     2. Transcribe the audio file with ``timestamps=True`` to obtain per-word
        start/end times.
     3. Walk through the words and start a new segment whenever the gap between

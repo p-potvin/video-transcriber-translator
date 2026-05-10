@@ -338,7 +338,7 @@ class VaultWindow(QMainWindow):
         toggles_row.setSpacing(16)
 
         col_l = QVBoxLayout()
-        self.vocal_check = QCheckBox("Vocal Isolation (Demucs)")
+        self.vocal_check = QCheckBox("Isolate Vocals")
         self.vocal_check.setChecked(True)
         self.skip_orig_check = QCheckBox("Skip Original SRT")
         col_l.addWidget(self.vocal_check)
