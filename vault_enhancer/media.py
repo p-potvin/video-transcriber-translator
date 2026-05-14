@@ -143,8 +143,10 @@ def fix_audio_and_reencode(video_path, output_path=None, delay_ms=0, bg_volume="
         sys.executable, "-m", "demucs.separate",
         "-n", "htdemucs", "-d", "cuda", "--two-stems=vocals",
         "--shifts=1", "--overlap=0.25", "-o", temp_dir,
-        "--filename", "{stem}.{ext}", video_abs
+        "--filename", "{stem}.{ext}", video_abs,
+        "--repo", demucs_cache
     ]
+    print(f"[Demucs] Command: {' '.join(demucs_cmd)}")
 
     try:
         run_command_with_progress(demucs_cmd, "Step 1.1: Vocal Separation", 10, 35)
@@ -218,16 +220,24 @@ def fix_audio_and_reencode(video_path, output_path=None, delay_ms=0, bg_volume="
 
     # Cleanup temp
     if os.path.exists(temp_dir):
-        shutil.rmtree(temp_dir, ignore_errors=True)
+        try:
+            from vault_enhancer.utils import robust_rmtree
+            robust_rmtree(temp_dir)
+        except Exception:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
     # Replace original video
     shutil.move(output_abs, video_abs)
     print(f"Successfully fixed audio and replaced original: {video_abs}")
     return video_abs
 
-def find_media_files(root_dir, extensions):
+def find_media_files(root_dir, extensions, skip_subdirs=False):
     ext_set = {ext.lower() for ext in extensions}
+    def is_root_level(dirpath):
+        return os.path.abspath(dirpath) == os.path.abspath(root_dir)
     for dirpath, _, files in os.walk(root_dir):
+        if skip_subdirs and not is_root_level(dirpath):
+            continue
         for file_name in files:
             ext = os.path.splitext(file_name)[1].lower()
             if ext in ext_set:
