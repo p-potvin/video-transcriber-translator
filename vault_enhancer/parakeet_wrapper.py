@@ -80,9 +80,16 @@ class ParakeetTranscriber:
     def __init__(self, model_name: str = DEFAULT_MODEL):
         import torch
         import nemo.collections.asr as nemo_asr
+        import os
 
         self.logger = logging.getLogger("vault_enhancer.parakeet")
         self.logger.info(f"Loading Parakeet model: {model_name}")
+
+        # Set a persistent cache dir for NeMo models via environment variable
+        cache_dir = os.path.expanduser(os.getenv("NEMO_MODELS_CACHE", "~/.cache/nemo"))
+        os.makedirs(cache_dir, exist_ok=True)
+        os.environ["NEMO_MODELS_CACHE"] = cache_dir
+        self.logger.info(f"Using model cache directory: {cache_dir}")
 
         # Use generic ASRModel to support Canary, Parakeet-TDT, etc.
         if model_name.endswith(".nemo") and os.path.exists(model_name):

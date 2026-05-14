@@ -256,18 +256,22 @@ class VaultWindow(QMainWindow):
         path_row = QHBoxLayout()
         self.input_edit = QLineEdit()
         self.input_edit.setPlaceholderText("Drop a video/audio file or folder path…")
-        
+
         browse_file_btn = QPushButton("File…")
         browse_file_btn.setFixedWidth(70)
         browse_file_btn.clicked.connect(self.browse_input_file)
-        
+
         browse_folder_btn = QPushButton("Folder…")
         browse_folder_btn.setFixedWidth(70)
         browse_folder_btn.clicked.connect(self.browse_input_folder)
-        
+
+        self.skip_subdirs_check = QCheckBox("Skip Subdirectories (root only)")
+        self.skip_subdirs_check.setToolTip("If checked, only process files in the selected folder, not subfolders.")
+
         path_row.addWidget(self.input_edit)
         path_row.addWidget(browse_file_btn)
         path_row.addWidget(browse_folder_btn)
+        path_row.addWidget(self.skip_subdirs_check)
         layout.addLayout(path_row)
 
         layout.addWidget(self._make_separator())
@@ -588,16 +592,8 @@ class VaultWindow(QMainWindow):
         full_html = f"{ts_html} {msg_html}"
 
         if is_progress:
-            if getattr(self, '_last_was_progress', False):
-                # Overwrite the last line for progress updates
-                cursor = self.log_area.textCursor()
-                cursor.movePosition(QTextCursor.End)
-                cursor.select(QTextCursor.BlockUnderCursor)
-                cursor.removeSelectedText()
-                self.log_area.setTextCursor(cursor)
-                self.log_area.insertHtml(full_html)
-            else:
-                self.log_area.append(full_html)
+            # Always append progress logs (never overwrite)
+            self.log_area.append(full_html)
             self._last_was_progress = True
         else:
             self.log_area.append(full_html)
@@ -620,7 +616,6 @@ class VaultWindow(QMainWindow):
         params = {
             "input_file": input_path,
             "languages": [l.strip() for l in self.lang_edit.text().split(",") if l.strip()],
-            "engine": self.engine_combo.currentText(),
             "translate_api": self.api_combo.currentText(),
             "translate_mode": self.mode_combo.currentText(),
             "skip_vocal_isolation": not self.vocal_check.isChecked(),
@@ -631,6 +626,8 @@ class VaultWindow(QMainWindow):
             "overwrite": self.overwrite_check.isChecked(),
             "continue_on_error": self.continue_err_check.isChecked(),
         }
+
+        skip_subdirs = self.skip_subdirs_check.isChecked()
 
         self.start_btn.setEnabled(False)
         self.status_badge.setText("RUNNING")
@@ -644,6 +641,7 @@ class VaultWindow(QMainWindow):
         self.log(f"Pipeline started — {os.path.basename(input_path)}")
 
         self.worker = TranscriptionWorker(params)
+        self.worker.skip_subdirs = skip_subdirs
         self.worker.progress.connect(self._on_progress_text)
         self.worker.progress_percent.connect(self._on_progress_pct)
         self.worker.error.connect(self.on_error)
