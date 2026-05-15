@@ -37,7 +37,11 @@ def audit_widget_tree(root_widget: QWidget) -> List[str]:
                 if not parent_geom.contains(child_geom):
                     # Minor overflows (1-2px) might be anti-aliasing or borders, but significant ones are bugs
                     # Allow slight bleed, depending on layout margins
-                    if child_geom.right() > parent_geom.right() + 5 or child_geom.bottom() > parent_geom.bottom() + 5:
+                    # Ignore scroll area viewports where children intentionally overflow
+                    from PySide6.QtWidgets import QAbstractScrollArea
+                    if isinstance(widget, QAbstractScrollArea) or (widget.parent() and isinstance(widget.parent(), QAbstractScrollArea)):
+                        pass
+                    elif child_geom.right() > parent_geom.right() + 5 or child_geom.bottom() > parent_geom.bottom() + 5:
                         errors.append(f"Overflow: {child.__class__.__name__} bounds ({child_geom}) "
                                       f"exceed parent {widget.__class__.__name__} ({parent_geom})")
                 walk(child, level + 1)

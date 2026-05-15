@@ -169,10 +169,6 @@ STRINGS = {
         "hide": "Hide",
         "show": "Show",
         "ready": "Ready",
-        "idle": "IDLE",
-        "running": "RUNNING",
-        "failed": "FAILED",
-        "done": "DONE",
         "footer": "© 2026 VaultWares — All processing is local. No data leaves your machine."
     },
     "QC": {
@@ -200,10 +196,6 @@ STRINGS = {
         "hide": "Masquer",
         "show": "Afficher",
         "ready": "Prêt",
-        "idle": "INACTIF",
-        "running": "EN COURS",
-        "failed": "ÉCHOUÉ",
-        "done": "TERMINÉ",
         "footer": "© 2026 VaultWares — Tout le traitement est local. Aucune donnée ne quitte votre machine."
     }
 }
@@ -214,7 +206,7 @@ class VaultWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Vault Video Enhancer")
-        self.setMinimumSize(400, 400)
+        self.setMinimumSize(1100, 700)
         self.setWindowState(Qt.WindowMaximized)
 
         self.exporter = QtThemeExporter()
@@ -223,7 +215,7 @@ class VaultWindow(QMainWindow):
         self.current_lang = "EN"
         # Determine OS mode (simplified, defaulting to dark as requested if unavailable)
         self.current_mode = "dark"
-        self.current_theme = next((t for t in self.themes if t.name == "Golden Slate"), self.themes[0])
+        self.current_theme = self.exporter.get_theme_by_name("Golden Slate")
 
         self.init_ui()
 
@@ -239,18 +231,11 @@ class VaultWindow(QMainWindow):
     # ── UI construction ──────────────────────────────────────────────────────
 
     def init_ui(self):
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.setCentralWidget(self.scroll_area)
-        
         root = QWidget()
-        self.scroll_area.setWidget(root)
-        
+        self.setCentralWidget(root)
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(16, 10, 16, 10)
         root_layout.setSpacing(10)
-        root.setMinimumHeight(800)
 
         # ── Header ────────────────────────────────────────────────────────
         root_layout.addWidget(self._build_header())
@@ -260,10 +245,6 @@ class VaultWindow(QMainWindow):
         self.split = QSplitter(Qt.Horizontal)
         self.config_panel = self._build_config_panel()
         self.monitor_panel = self._build_monitor_panel()
-        
-        self.config_panel.setMinimumHeight(400)
-        self.monitor_panel.setMinimumHeight(250)
-        
         self.split.addWidget(self.config_panel)
         self.split.addWidget(self.monitor_panel)
         self.split.setStretchFactor(0, 4)
@@ -325,7 +306,7 @@ class VaultWindow(QMainWindow):
         self.lang_combo.currentTextChanged.connect(self.change_language)
 
         layout.addWidget(logo_label)
-        layout.addSpacing(2)
+        layout.addSpacing(10)
         layout.addWidget(self.title_label)
         layout.addItem(spacer)
         
@@ -502,16 +483,17 @@ class VaultWindow(QMainWindow):
         self.monitor_title = QLabel(STRINGS[self.current_lang]["activity"])
         self.monitor_title.setObjectName("SectionTitleMonitor")
         monitor_row.addWidget(self.monitor_title)
+
         monitor_row.addStretch()
 
-        self.status_badge = QLabel(STRINGS[self.current_lang]["idle"])
+        self.status_badge = QLabel("IDLE")
         self.status_badge.setObjectName("TagBadge")
-        self.status_badge.setAlignment(Qt.AlignCenter)
         monitor_row.addWidget(self.status_badge)
         
         self.toggle_monitor_btn = QPushButton()
-        self.toggle_monitor_btn.setText(STRINGS[self.current_lang]["hide"])
-        self.toggle_monitor_btn.setObjectName("SecondaryBtn")
+        self.toggle_monitor_btn.setText("Hide")
+        self.toggle_monitor_btn.setFixedSize(50, 24)
+        self.toggle_monitor_btn.setStyleSheet("font-size: 10px; padding: 2px 6px; border-radius: 4px;")
         self.toggle_monitor_btn.clicked.connect(self.toggle_monitor)
         monitor_row.addWidget(self.toggle_monitor_btn)
         
@@ -562,29 +544,6 @@ class VaultWindow(QMainWindow):
             self.toggle_monitor_btn.setText("Hide")
 
     # ── Helpers ──────────────────────────────────────────────────────────────
-
-
-    def resizeEvent(self, event):
-        super().resizeEvent(event)
-        if self.width() < 800:
-            if self.split.orientation() != Qt.Vertical:
-                self.split.setOrientation(Qt.Vertical)
-                # Put monitor on top
-                self.split.insertWidget(0, self.monitor_panel)
-                self.split.insertWidget(1, self.config_panel)
-                
-            self.split.setMinimumHeight(self.monitor_panel.minimumHeight() + self.config_panel.minimumHeight() + 10)
-        else:
-            if self.split.orientation() != Qt.Horizontal:
-                self.split.setOrientation(Qt.Horizontal)
-                self.split.insertWidget(0, self.config_panel)
-                self.split.insertWidget(1, self.monitor_panel)
-                
-            self.split.setMinimumHeight(max(self.monitor_panel.minimumHeight(), self.config_panel.minimumHeight()))
-            
-        # Ensure scroll area content resizes correctly to prevent layout auditor bounds error
-        if hasattr(self, 'scroll_area') and self.scroll_area.widget():
-            self.scroll_area.widget().setMinimumHeight(self.split.minimumHeight() + 150)
 
     def _setup_accessibility(self):
         # --- Accessibility & Tooltips ---
@@ -795,7 +754,7 @@ class VaultWindow(QMainWindow):
         skip_subdirs = self.skip_subdirs_check.isChecked()
 
         self.start_btn.setEnabled(False)
-        self.status_badge.setText(STRINGS[self.current_lang]["running"])
+        self.status_badge.setText("RUNNING")
         self.status_badge.setStyleSheet(
             f"background-color: {self.current_theme.success}; "
             f"color: {self.current_theme.text_inverse}; "
@@ -822,7 +781,7 @@ class VaultWindow(QMainWindow):
 
     def on_error(self, message: str):
         self.log(f"<span style='color:{self.current_theme.error}'>ERROR: {message}</span>")
-        self.status_badge.setText(STRINGS[self.current_lang]["failed"])
+        self.status_badge.setText("FAILED")
         self.status_badge.setStyleSheet(
             f"background-color: {self.current_theme.error}; "
             f"color: {self.current_theme.text_inverse}; "
@@ -841,7 +800,7 @@ class VaultWindow(QMainWindow):
         for p in outputs:
             self.log(f"<span style='color:{t.text_muted}'>  • {os.path.basename(p)}</span>")
 
-        self.status_badge.setText(STRINGS[self.current_lang]["done"])
+        self.status_badge.setText("DONE")
         self.status_badge.setStyleSheet(
             f"background-color: {t.accent}; "
             f"color: {t.text_inverse}; "
