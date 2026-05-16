@@ -39,7 +39,7 @@ def transcribe_video(
     languages = None,
     skip_original = False,
     skip_vocal_isolation = False,
-    translate_api = "deep-translator",
+    translate_api = "local",
     translate_mode = "non-target",
     max_translate_chars = 350000,
     max_translate_calls = 500,

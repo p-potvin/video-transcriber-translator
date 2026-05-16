@@ -28,7 +28,6 @@ def main():
     )
     parser.add_argument("--skip-original", action="store_true", help="Do not generate original-language SRT")
     parser.add_argument("--skip-vocal-isolation", action="store_true", help="Skip vocal isolation with Demucs (faster but noisier)")
-    parser.add_argument("--translate-api", default="deep-translator", help="Translator backend (googletrans or deep-translator)")
     parser.add_argument(
         "--translate-mode",
         choices=["all", "non-target"],
@@ -95,7 +94,7 @@ def main():
                     languages=languages,
                     skip_original=args.skip_original,
                     skip_vocal_isolation=args.skip_vocal_isolation,
-                    translate_api=args.translate_api,
+                    translate_api="local",
                     translate_mode=args.translate_mode,
                     max_translate_chars=args.max_translate_chars,
                     max_translate_calls=args.max_translate_calls,
@@ -133,7 +132,7 @@ def main():
             languages=languages,
             skip_original=args.skip_original,
             skip_vocal_isolation=args.skip_vocal_isolation,
-            translate_api=args.translate_api,
+            translate_api="local",
             translate_mode=args.translate_mode,
             max_translate_chars=args.max_translate_chars,
             max_translate_calls=args.max_translate_calls,
