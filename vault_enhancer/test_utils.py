@@ -19,8 +19,8 @@ class TestUtils(unittest.TestCase):
                 self.end = end
         
         segments = [
-            MockSegment(0, 0, 1.5),
-            MockSegment(1, 1.5, 3.0)
+            MockSegment(1, 0, 1.5),
+            MockSegment(2, 1.5, 3.0)
         ]
         texts = ["Hello", "World"]
         output_path = "test_output.srt"

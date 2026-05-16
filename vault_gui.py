@@ -279,9 +279,9 @@ class VaultWindow(QMainWindow):
         v_engine = QVBoxLayout()
         v_engine.addWidget(self._field_label("ASR Engine"))
         self.engine_combo = QComboBox()
-        self.engine_combo.addItems(["parakeet"])
+        self.engine_combo.addItems(["parakeet", "whisper"])
         self.engine_combo.setCurrentText("parakeet")
-        self.engine_combo.setEnabled(False)
+        self.engine_combo.setEnabled(True)
         v_engine.addWidget(self.engine_combo)
         core_row.addLayout(v_engine)
 

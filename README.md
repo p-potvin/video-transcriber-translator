@@ -15,6 +15,7 @@ Part of the VaultWares Ecosystem • [docs.vaultwares.com](https://docs.vaultwar
 - **Vocal Isolation:** Integrated `Demucs` support for cleaner transcription in noisy environments.
 - **Multi-Language:** Translate into multiple target languages simultaneously.
 - **Batch Processing:** Recursive folder scanning with extension filtering.
+- **Duration & Call Limits:** Skip long media files and limit translator calls to prevent API abuse.
 - **VaultWares Native:** Built-in compliance with VaultWares Brand & Privacy guidelines.
 
 ---

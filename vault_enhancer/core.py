@@ -16,13 +16,25 @@ class DummyTqdm:
         raise StopIteration
     def update(self, *args, **kwargs): pass
     def close(self): pass
-    def write(self, s, *args, **kwargs): print(s)
+    @classmethod
+    def write(cls, s, *args, **kwargs): print(s)
     def set_description(self, *args, **kwargs): pass
     def set_postfix(self, *args, **kwargs): pass
 tqdm.tqdm = DummyTqdm
 from vault_enhancer import utils
 from vault_enhancer import translation
 from vault_enhancer import media
+
+
+_WHISPER_MODEL = None
+
+def get_whisper_model():
+    global _WHISPER_MODEL
+    if _WHISPER_MODEL is None:
+        from faster_whisper import WhisperModel
+        # Use large-v3 for best quality or large-v2, adjust as necessary. small is good for speed.
+        _WHISPER_MODEL = WhisperModel("small", device="cuda" if __import__("torch").cuda.is_available() else "cpu", compute_type="float16" if __import__("torch").cuda.is_available() else "int8")
+    return _WHISPER_MODEL
 
 _PARAKEET_MODEL = None
 
@@ -47,6 +59,7 @@ def transcribe_video(
     source_language = "en",
     delay_ms = 0,
     max_duration = 7200,
+    engine = "parakeet",
     progress_callback = None
 ):
     start_total = time.time()
@@ -87,7 +100,10 @@ def transcribe_video(
         progress_callback("Step 0: Loading ML models into VRAM (this may take a minute)...", 2)
         
     start_load = time.time()
-    model = get_parakeet_model()
+    if engine == "whisper":
+        model = get_whisper_model()
+    else:
+        model = get_parakeet_model()
 
     # Ensure context is fully initialized before starting subprocesses
     try:
@@ -117,7 +133,7 @@ def transcribe_video(
             print(f"Warning: Audio fix failed: {e}. Falling back to original video.")
             transcription_file = input_file
 
-    print(f"--- Step 2: Transcribing Video (Parakeet) ---")
+    print(f"--- Step 2: Transcribing Video ({engine.capitalize()}) ---")
     # Extract WAV for reliable ASR loading (bypasses torchaudio FFmpeg extension bugs)
     if progress_callback is not None:
         progress_callback("Extracting audio for ASR...", 48)
@@ -128,10 +144,38 @@ def transcribe_video(
     if progress_callback is not None:
         progress_callback("Step 2: Transcribing Audio...", 50)
         
-    all_segments = model.transcribe_file(
-        asr_wav_file,
-        language=source_language
-    )
+    if engine == "whisper":
+        # faster-whisper returns an iterator
+        segments, info = model.transcribe(
+            asr_wav_file,
+            language=source_language if source_language and source_language.lower() not in ["none", "orig", "original", "auto"] else None,
+            vad_filter=True,
+            vad_parameters=vad_parameters
+        )
+
+        # We need to map to TranscriptSegment or a mock class that behaves like it
+        class WhisperSegment:
+            def __init__(self, id, start, end, text, language):
+                self.id = id
+                self.start = start
+                self.end = end
+                self.text = text
+                self.language = language
+
+        all_segments = []
+        for segment in segments:
+            all_segments.append(WhisperSegment(
+                id=segment.id,
+                start=segment.start,
+                end=segment.end,
+                text=segment.text.strip(),
+                language=info.language
+            ))
+    else:
+        all_segments = model.transcribe_file(
+            asr_wav_file,
+            language=source_language
+        )
     
     # Cleanup ASR temp file
     if os.path.exists(asr_wav_file):
@@ -191,13 +235,15 @@ def transcribe_video(
             
             outputs_to_generate[srt_lang_path] = translated_texts
 
-        if not outputs_to_generate:
-            print("No new files to generate.")
-            return []
+
         
-        for path, texts_to_write in outputs_to_generate.items():
-            utils.write_srt(path, all_segments, texts_to_write)
-            output_paths.append(path)
+    if not outputs_to_generate:
+        print("No new files to generate.")
+        return []
+
+    for path, texts_to_write in outputs_to_generate.items():
+        utils.write_srt(path, all_segments, texts_to_write)
+        output_paths.append(path)
         
     print(f"\n--- Processing Finished ---")
     print(f"\nTotal time elapsed: {time.time() - start_total:.2f}s")

@@ -5,9 +5,11 @@ from vault_enhancer import core
 from vault_enhancer.parakeet_wrapper import TranscriptSegment
 
 class TestCoreIntegration(unittest.TestCase):
-    @patch("vault_enhancer.media.isolate_vocals_with_demucs")
-    def test_transcribe_video_mocked(self, mock_isolate):
-        mock_isolate.return_value = None  # triggers fallback to input_file
+    @patch("vault_enhancer.media.fix_audio_and_reencode")
+    @patch("vault_enhancer.media.extract_wav_for_asr")
+    def test_transcribe_video_mocked(self, mock_extract, mock_fix):
+        mock_fix.return_value = "dummy_video.mp4"
+        mock_extract.return_value = "dummy_video.mp4"
 
         mock_segments = [TranscriptSegment(1, 0.0, 1.0, "Hello world")]
 
@@ -31,7 +33,7 @@ class TestCoreIntegration(unittest.TestCase):
                     engine="parakeet"
                 )
 
-            self.assertEqual(len(outputs), 1)
+            self.assertEqual(len(outputs), 2)
             self.assertTrue(os.path.exists(output_file))
 
             with open(output_file, "r", encoding="utf-8") as f:
@@ -43,6 +45,9 @@ class TestCoreIntegration(unittest.TestCase):
                 os.remove(input_file)
             if os.path.exists(output_file):
                 os.remove(output_file)
+            en_file = output_file.replace(".srt", ".en.srt")
+            if os.path.exists(en_file):
+                os.remove(en_file)
 
 if __name__ == "__main__":
     unittest.main()
