@@ -16,6 +16,9 @@ Part of the VaultWares Ecosystem • [docs.vaultwares.com](https://docs.vaultwar
 - **Multi-Language:** Translate into multiple target languages simultaneously.
 - **Batch Processing:** Recursive folder scanning with extension filtering.
 - **VaultWares Native:** Built-in compliance with VaultWares Brand & Privacy guidelines.
+- **Interactive GUI:** PySide6-based graphical interface with drag-and-drop and real-time processing logs.
+- **Dynamic Theming:** Built-in VaultWares design system with support for on-the-fly theme switching.
+- **Progress Monitoring:** Real-time visual tracking of transcription, translation, and extraction steps.
 
 ---
 

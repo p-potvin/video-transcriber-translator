@@ -104,9 +104,13 @@ class TranscriptionWorker(QThread):
             self.finished.emit(all_outputs)
         except Exception as e:
             import traceback
-            self.error.emit(f"{str(e)}\n{traceback.format_exc()}")
+            from vault_enhancer import utils
+            utils.log_error(f"Worker Error: {str(e)}\n{traceback.format_exc()}")
+            self.error.emit(f"An error occurred during processing. Please check the logs.")
         except BaseException as e:
-            self.error.emit(f"Critical crash: {str(e)}")
+            from vault_enhancer import utils
+            utils.log_error(f"Critical crash: {str(e)}")
+            self.error.emit(f"A critical error occurred. Please restart the application.")
 
 
 # ─────────────────────────────────────────────────────────────────────────────
