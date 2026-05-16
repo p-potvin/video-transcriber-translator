@@ -142,6 +142,102 @@ class LogStream:
 # Main window
 # ─────────────────────────────────────────────────────────────────────────────
 
+
+# ── Localization ─────────────────────────────────────────────────────────
+
+UI_STRINGS = {
+    "en": {
+        "theme": "Theme",
+        "lang_switch": "EN",
+        "config_title": "PIPELINE CONFIGURATION",
+        "input_label": "Input File or Directory",
+        "input_placeholder": "Drop a video/audio file or folder path…",
+        "file_btn": "File…",
+        "folder_btn": "Folder…",
+        "engine_label": "ASR Engine",
+        "target_lang_label": "Target Languages (comma-separated)",
+        "target_lang_placeholder": "en, fr, de…",
+        "api_label": "Translator Backend",
+        "mode_label": "Translate Mode",
+        "src_lang_label": "Source Language",
+        "src_lang_placeholder": "Auto-detect",
+        "max_dur_label": "Max Duration",
+        "max_dur_special": "None",
+        "delay_label": "Audio Delay",
+        "isolate_check": "Isolate Vocals",
+        "skip_orig_check": "Skip Original SRT",
+        "overwrite_check": "Overwrite Existing Files",
+        "continue_check": "Continue on Error",
+        "start_btn": "▶  INITIATE PIPELINE",
+        "monitor_title": "ACTIVITY MONITOR",
+        "ready": "Ready",
+        "footer": "© 2026 VaultWares — Built under VaultWares Enterprise Guidelines",
+        "idle": "IDLE",
+        "hide": "Hide",
+        "show": "Show",
+        "tt_theme": "Select UI Theme",
+        "tt_input": "Path to the video/audio file to process",
+        "tt_file": "Browse for media file (Ctrl+O)",
+        "tt_folder": "Browse for folder",
+        "tt_lang": "Comma-separated target languages for translation (e.g., en, fr, es)",
+        "tt_engine": "Transcription engine to use",
+        "tt_api": "Translation backend service",
+        "tt_mode": "'all' translates everything; 'non-target' only translates if original isn't the target",
+        "tt_src": "Force a specific source language if auto-detect fails",
+        "tt_dur": "Skip media longer than this (seconds)",
+        "tt_iso": "Use Demucs to isolate vocals before transcription for better accuracy in noisy audio",
+        "tt_skip": "Do not generate the SRT file for the original spoken language",
+        "tt_over": "Overwrite existing SRT files if they exist",
+        "tt_cont": "Continue processing next files if one fails (Scan Mode only)",
+        "tt_start": "Initiate transcription pipeline (Ctrl+Return)"
+    },
+    "qc": {
+        "theme": "Thème",
+        "lang_switch": "QC",
+        "config_title": "CONFIGURATION DU PIPELINE",
+        "input_label": "Fichier ou dossier source",
+        "input_placeholder": "Déposer un fichier ou un dossier…",
+        "file_btn": "Fichier…",
+        "folder_btn": "Dossier…",
+        "engine_label": "Moteur ASR",
+        "target_lang_label": "Langues cibles (séparées par virgules)",
+        "target_lang_placeholder": "en, fr, de…",
+        "api_label": "Service de traduction",
+        "mode_label": "Mode de traduction",
+        "src_lang_label": "Langue source",
+        "src_lang_placeholder": "Détection auto",
+        "max_dur_label": "Durée max",
+        "max_dur_special": "Aucune",
+        "delay_label": "Délai audio",
+        "isolate_check": "Isoler les voix",
+        "skip_orig_check": "Ignorer le SRT original",
+        "overwrite_check": "Écraser les fichiers existants",
+        "continue_check": "Continuer sur erreur",
+        "start_btn": "▶  LANCER LE PIPELINE",
+        "monitor_title": "MONITEUR D'ACTIVITÉ",
+        "ready": "Prêt",
+        "footer": "© 2026 VaultWares — Tout le traitement est local. Aucune donnée ne quitte votre machine.",
+        "idle": "INACTIF",
+        "hide": "Cacher",
+        "show": "Montrer",
+        "tt_theme": "Sélectionner le thème de l'interface",
+        "tt_input": "Chemin du fichier/dossier à traiter",
+        "tt_file": "Parcourir pour un fichier (Ctrl+O)",
+        "tt_folder": "Parcourir pour un dossier",
+        "tt_lang": "Langues cibles séparées par des virgules (ex: en, fr, es)",
+        "tt_engine": "Moteur de transcription à utiliser",
+        "tt_api": "Service de traduction à utiliser",
+        "tt_mode": "'all' traduit tout; 'non-target' traduit seulement si l'original n'est pas la cible",
+        "tt_src": "Forcer une langue source spécifique si la détection automatique échoue",
+        "tt_dur": "Ignorer les médias plus longs que ceci (secondes)",
+        "tt_iso": "Utiliser Demucs pour isoler les voix avant la transcription pour une meilleure précision",
+        "tt_skip": "Ne pas générer le fichier SRT pour la langue parlée originale",
+        "tt_over": "Écraser les fichiers SRT existants s'ils existent",
+        "tt_cont": "Continuer avec les fichiers suivants si l'un échoue (Mode scan uniquement)",
+        "tt_start": "Lancer le pipeline de transcription (Ctrl+Entrée)"
+    }
+}
+
 class VaultWindow(QMainWindow):
     log_signal = Signal(str)
 
@@ -152,8 +248,10 @@ class VaultWindow(QMainWindow):
         self.setWindowState(Qt.WindowMaximized)
 
         self.exporter = QtThemeExporter()
+
         self.themes = self.exporter.get_all_themes()
         self.current_theme = self.themes[0]
+        self.current_lang = "en"
 
         self.init_ui()
         self.apply_vault_styles()
@@ -219,25 +317,63 @@ class VaultWindow(QMainWindow):
         # Separator spacer
         spacer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
+
+        # Mode switch
+        self.mode_btn = QPushButton("🌙/☀️")
+        self.mode_btn.setToolTip("Toggle Light/Dark Theme")
+        self.mode_btn.setFixedSize(40, 24)
+        self.mode_btn.clicked.connect(self.toggle_mode)
+
+        # Language switch
+        self.lang_combo = QComboBox()
+        self.lang_combo.setFixedWidth(60)
+        self.lang_combo.addItems(["EN", "QC"])
+        self.lang_combo.currentTextChanged.connect(self.change_language)
+
         # Theme selector
-        theme_label = QLabel("Theme")
-        theme_label.setObjectName("StatusLabel")
+        self.theme_label = QLabel(UI_STRINGS[self.current_lang]["theme"])
+        self.theme_label.setObjectName("StatusLabel")
         self.theme_combo = QComboBox()
         self.theme_combo.setFixedWidth(220)
         for t in self.themes:
             self.theme_combo.addItem(t.name)
-        self.theme_combo.setCurrentText(self.current_theme.name)
+
+        # OS Default theme selection
+        import sys as _sys
+        is_dark = True
+        try:
+            from PySide6.QtGui import QPalette
+            import PySide6.QtWidgets
+            app_inst = PySide6.QtWidgets.QApplication.instance()
+            if app_inst:
+                win_color = app_inst.palette().color(QPalette.Window).value()
+                if win_color > 128: # Simple brightness check (0-255)
+                    is_dark = False
+        except: pass
+
+        default_theme_id = "golden-slate" if is_dark else "codex-solar-light-revisited"
+        for i, t in enumerate(self.themes):
+            if t.id == default_theme_id:
+                self.theme_combo.setCurrentIndex(i)
+                self.current_theme = t
+                break
+
         self.theme_combo.currentTextChanged.connect(self.change_theme)
 
         layout.addWidget(logo_label)
         layout.addSpacing(10)
         layout.addWidget(self.title_label)
         layout.addItem(spacer)
-        layout.addWidget(theme_label)
+        layout.addWidget(self.mode_btn)
+        layout.addSpacing(6)
+        layout.addWidget(self.lang_combo)
+        layout.addSpacing(6)
+        layout.addWidget(self.theme_label)
         layout.addSpacing(6)
         layout.addWidget(self.theme_combo)
 
         return w
+
 
     def _build_config_panel(self) -> QFrame:
         panel = QFrame()
@@ -247,21 +383,25 @@ class VaultWindow(QMainWindow):
         layout.setSpacing(14)
 
         # Title
-        title = QLabel("PIPELINE CONFIGURATION")
+        self.config_title = QLabel(UI_STRINGS[self.current_lang]["config_title"])
+        title = self.config_title
         title.setObjectName("SectionTitleConfig")
         layout.addWidget(title)
 
         # Input path ─────────────────────────────────────────────────────
-        layout.addWidget(self._field_label("Input File or Directory"))
+        self.input_label = self._field_label(UI_STRINGS[self.current_lang]["input_label"])
+        layout.addWidget(self.input_label)
         path_row = QHBoxLayout()
         self.input_edit = QLineEdit()
-        self.input_edit.setPlaceholderText("Drop a video/audio file or folder path…")
+        self.input_edit.setPlaceholderText(UI_STRINGS[self.current_lang]["input_placeholder"])
         
-        browse_file_btn = QPushButton("File…")
+        self.browse_file_btn = QPushButton(UI_STRINGS[self.current_lang]["file_btn"])
+        browse_file_btn = self.browse_file_btn
         browse_file_btn.setFixedWidth(70)
         browse_file_btn.clicked.connect(self.browse_input_file)
         
-        browse_folder_btn = QPushButton("Folder…")
+        self.browse_folder_btn = QPushButton(UI_STRINGS[self.current_lang]["folder_btn"])
+        browse_folder_btn = self.browse_folder_btn
         browse_folder_btn.setFixedWidth(70)
         browse_folder_btn.clicked.connect(self.browse_input_folder)
         
@@ -277,7 +417,8 @@ class VaultWindow(QMainWindow):
         core_row.setSpacing(12)
 
         v_engine = QVBoxLayout()
-        v_engine.addWidget(self._field_label("ASR Engine"))
+        self.engine_label = self._field_label(UI_STRINGS[self.current_lang]["engine_label"])
+        v_engine.addWidget(self.engine_label)
         self.engine_combo = QComboBox()
         self.engine_combo.addItems(["parakeet"])
         self.engine_combo.setCurrentText("parakeet")
@@ -286,9 +427,10 @@ class VaultWindow(QMainWindow):
         core_row.addLayout(v_engine)
 
         v_lang = QVBoxLayout()
-        v_lang.addWidget(self._field_label("Target Languages (comma-separated)"))
+        self.target_lang_label = self._field_label(UI_STRINGS[self.current_lang]["target_lang_label"])
+        v_lang.addWidget(self.target_lang_label)
         self.lang_edit = QLineEdit("en")
-        self.lang_edit.setPlaceholderText("en, fr, de…")
+        self.lang_edit.setPlaceholderText(UI_STRINGS[self.current_lang]["target_lang_placeholder"])
         v_lang.addWidget(self.lang_edit)
         core_row.addLayout(v_lang, stretch=2)
 
@@ -299,14 +441,16 @@ class VaultWindow(QMainWindow):
         trans_row.setSpacing(12)
 
         v_api = QVBoxLayout()
-        v_api.addWidget(self._field_label("Translator Backend"))
+        self.api_label = self._field_label(UI_STRINGS[self.current_lang]["api_label"])
+        v_api.addWidget(self.api_label)
         self.api_combo = QComboBox()
         self.api_combo.addItems(["deep-translator", "googletrans"])
         v_api.addWidget(self.api_combo)
         trans_row.addLayout(v_api)
 
         v_mode = QVBoxLayout()
-        v_mode.addWidget(self._field_label("Translate Mode"))
+        self.mode_label = self._field_label(UI_STRINGS[self.current_lang]["mode_label"])
+        v_mode.addWidget(self.mode_label)
         self.mode_combo = QComboBox()
         self.mode_combo.addItems(["all", "non-target"])
         v_mode.addWidget(self.mode_combo)
@@ -319,24 +463,27 @@ class VaultWindow(QMainWindow):
         limits_row.setSpacing(12)
 
         v_src = QVBoxLayout()
-        v_src.addWidget(self._field_label("Source Language"))
+        self.src_lang_label = self._field_label(UI_STRINGS[self.current_lang]["src_lang_label"])
+        v_src.addWidget(self.src_lang_label)
         self.src_lang_edit = QLineEdit()
-        self.src_lang_edit.setPlaceholderText("Auto-detect")
+        self.src_lang_edit.setPlaceholderText(UI_STRINGS[self.current_lang]["src_lang_placeholder"])
         v_src.addWidget(self.src_lang_edit)
         limits_row.addLayout(v_src)
 
         v_dur = QVBoxLayout()
-        v_dur.addWidget(self._field_label("Max Duration"))
+        self.max_dur_label = self._field_label(UI_STRINGS[self.current_lang]["max_dur_label"])
+        v_dur.addWidget(self.max_dur_label)
         self.max_duration = QSpinBox()
         self.max_duration.setRange(0, 1440)
         self.max_duration.setValue(0)
-        self.max_duration.setSpecialValueText("None")
+        self.max_duration.setSpecialValueText(UI_STRINGS[self.current_lang]["max_dur_special"])
         self.max_duration.setSuffix(" min")
         v_dur.addWidget(self.max_duration)
         limits_row.addLayout(v_dur)
 
         v_delay = QVBoxLayout()
-        v_delay.addWidget(self._field_label("Audio Delay"))
+        self.delay_label = self._field_label(UI_STRINGS[self.current_lang]["delay_label"])
+        v_delay.addWidget(self.delay_label)
         self.delay_spin = QSpinBox()
         self.delay_spin.setRange(-10000, 10000)
         self.delay_spin.setValue(0)
@@ -353,15 +500,15 @@ class VaultWindow(QMainWindow):
         toggles_row.setSpacing(16)
 
         col_l = QVBoxLayout()
-        self.vocal_check = QCheckBox("Isolate Vocals")
+        self.vocal_check = QCheckBox(UI_STRINGS[self.current_lang]["isolate_check"])
         self.vocal_check.setChecked(True)
-        self.skip_orig_check = QCheckBox("Skip Original SRT")
+        self.skip_orig_check = QCheckBox(UI_STRINGS[self.current_lang]["skip_orig_check"])
         col_l.addWidget(self.vocal_check)
         col_l.addWidget(self.skip_orig_check)
 
         col_r = QVBoxLayout()
-        self.overwrite_check = QCheckBox("Overwrite Existing Files")
-        self.continue_err_check = QCheckBox("Continue on Error")
+        self.overwrite_check = QCheckBox(UI_STRINGS[self.current_lang]["overwrite_check"])
+        self.continue_err_check = QCheckBox(UI_STRINGS[self.current_lang]["continue_check"])
         col_r.addWidget(self.overwrite_check)
         col_r.addWidget(self.continue_err_check)
 
@@ -372,7 +519,7 @@ class VaultWindow(QMainWindow):
         layout.addStretch()
 
         # Start button ────────────────────────────────────────────────────
-        self.start_btn = QPushButton("▶  INITIATE PIPELINE")
+        self.start_btn = QPushButton(UI_STRINGS[self.current_lang]["start_btn"])
         self.start_btn.setObjectName("PrimaryBtn")
         self.start_btn.setFixedHeight(52)
         self.start_btn.setCursor(Qt.PointingHandCursor)
@@ -390,17 +537,18 @@ class VaultWindow(QMainWindow):
 
         # Header row
         monitor_row = QHBoxLayout()
-        title = QLabel("ACTIVITY MONITOR")
+        self.monitor_title = QLabel(UI_STRINGS[self.current_lang]["monitor_title"])
+        title = self.monitor_title
         title.setObjectName("SectionTitleMonitor")
         monitor_row.addWidget(title)
         monitor_row.addStretch()
 
-        self.status_badge = QLabel("IDLE")
+        self.status_badge = QLabel(UI_STRINGS[self.current_lang]["idle"])
         self.status_badge.setObjectName("TagBadge")
         monitor_row.addWidget(self.status_badge)
         
         self.toggle_monitor_btn = QPushButton()
-        self.toggle_monitor_btn.setText("Hide")
+        self.toggle_monitor_btn.setText(UI_STRINGS[self.current_lang]["hide"])
         self.toggle_monitor_btn.setFixedSize(50, 24)
         self.toggle_monitor_btn.setStyleSheet("font-size: 10px; padding: 2px 6px; border-radius: 4px;")
         self.toggle_monitor_btn.clicked.connect(self.toggle_monitor)
@@ -418,7 +566,7 @@ class VaultWindow(QMainWindow):
         progress_row = QHBoxLayout()
         progress_row.setSpacing(10)
 
-        self.progress_label = QLabel("Ready")
+        self.progress_label = QLabel(UI_STRINGS[self.current_lang]["ready"])
         self.progress_label.setObjectName("StatusLabel")
         self.progress_label.setFixedWidth(200)
 
@@ -442,7 +590,7 @@ class VaultWindow(QMainWindow):
             self.log_area.hide()
             self.progress_label.show()
             self.progress_bar.show()
-            self.toggle_monitor_btn.setText("Show")
+            self.toggle_monitor_btn.setText(UI_STRINGS[self.current_lang]["show"])
         else:
             # Show monitor: restore horizontal, show all
             self.split.setOrientation(Qt.Horizontal)
@@ -450,26 +598,9 @@ class VaultWindow(QMainWindow):
             self.log_area.show()
             self.progress_label.show()
             self.progress_bar.show()
-            self.toggle_monitor_btn.setText("Hide")
+            self.toggle_monitor_btn.setText(UI_STRINGS[self.current_lang]["hide"])
 
     # ── Helpers ──────────────────────────────────────────────────────────────
-
-        # --- Accessibility & Tooltips ---
-        self.theme_combo.setToolTip("Select UI Theme")
-        self.input_edit.setToolTip("Path to the video/audio file to process")
-        browse_file_btn.setToolTip("Browse for media file (Ctrl+O)")
-        browse_folder_btn.setToolTip("Browse for folder")
-        self.lang_edit.setToolTip("Comma-separated target languages for translation (e.g., en, fr, es)")
-        self.engine_combo.setToolTip("Transcription engine to use")
-        self.api_combo.setToolTip("Translation backend service")
-        self.mode_combo.setToolTip("'all' translates everything; 'non-target' only translates if original isn't the target")
-        self.src_lang_edit.setToolTip("Force a specific source language if auto-detect fails")
-        self.max_duration.setToolTip("Skip media longer than this (seconds)")
-        self.vocal_check.setToolTip("Use Demucs to isolate vocals before transcription for better accuracy in noisy audio")
-        self.skip_orig_check.setToolTip("Do not generate the SRT file for the original spoken language")
-        self.overwrite_check.setToolTip("Overwrite existing SRT files if they exist")
-        self.continue_err_check.setToolTip("Continue processing next files if one fails (Scan Mode only)")
-        self.start_btn.setToolTip("Initiate transcription pipeline (Ctrl+Return)")
 
         # --- Tab Order ---
         QWidget.setTabOrder(self.theme_combo, self.input_edit)
@@ -500,10 +631,12 @@ class VaultWindow(QMainWindow):
         self.shortcut_clear.activated.connect(lambda: self.input_edit.clear())
 
         # Footer
-        self.footer = QLabel("© 2026 VaultWares — Built under VaultWares Enterprise Guidelines")
+        self.footer = QLabel(UI_STRINGS[self.current_lang]["footer"])
         self.footer.setAlignment(Qt.AlignCenter)
         self.footer.setObjectName("FooterLabel")
         main_layout.addWidget(self.footer)
+
+        self.change_language(self.current_lang)
 
 
     def dragEnterEvent(self, event):
@@ -535,7 +668,72 @@ class VaultWindow(QMainWindow):
         line.setFixedHeight(1)
         return line
 
+
+    def change_language(self, lang_code: str):
+        self.current_lang = lang_code.lower()
+        s = UI_STRINGS[self.current_lang]
+
+        self.theme_label.setText(s["theme"])
+        self.config_title.setText(s["config_title"])
+        self.input_label.setText(s["input_label"])
+        self.input_edit.setPlaceholderText(s["input_placeholder"])
+        self.browse_file_btn.setText(s["file_btn"])
+        self.browse_folder_btn.setText(s["folder_btn"])
+        self.engine_label.setText(s["engine_label"])
+        self.target_lang_label.setText(s["target_lang_label"])
+        self.lang_edit.setPlaceholderText(s["target_lang_placeholder"])
+        self.api_label.setText(s["api_label"])
+        self.mode_label.setText(s["mode_label"])
+        self.src_lang_label.setText(s["src_lang_label"])
+        self.src_lang_edit.setPlaceholderText(s["src_lang_placeholder"])
+        self.max_dur_label.setText(s["max_dur_label"])
+        self.max_duration.setSpecialValueText(s["max_dur_special"])
+        self.delay_label.setText(s["delay_label"])
+        self.vocal_check.setText(s["isolate_check"])
+        self.skip_orig_check.setText(s["skip_orig_check"])
+        self.overwrite_check.setText(s["overwrite_check"])
+        self.continue_err_check.setText(s["continue_check"])
+        self.start_btn.setText(s["start_btn"])
+        self.monitor_title.setText(s["monitor_title"])
+        self.progress_label.setText(s["ready"])
+        self.footer.setText(s["footer"])
+
+        if self.status_badge.text() in ["IDLE", "INACTIF"]:
+            self.status_badge.setText(s["idle"])
+
+        if self.toggle_monitor_btn.text() in ["Hide", "Cacher"]:
+            self.toggle_monitor_btn.setText(s["hide"])
+        elif self.toggle_monitor_btn.text() in ["Show", "Montrer"]:
+            self.toggle_monitor_btn.setText(s["show"])
+
+        # Tooltips
+        self.theme_combo.setToolTip(s["tt_theme"])
+        self.input_edit.setToolTip(s["tt_input"])
+        self.browse_file_btn.setToolTip(s["tt_file"])
+        self.browse_folder_btn.setToolTip(s["tt_folder"])
+        self.lang_edit.setToolTip(s["tt_lang"])
+        self.engine_combo.setToolTip(s["tt_engine"])
+        self.api_combo.setToolTip(s["tt_api"])
+        self.mode_combo.setToolTip(s["tt_mode"])
+        self.src_lang_edit.setToolTip(s["tt_src"])
+        self.max_duration.setToolTip(s["tt_dur"])
+        self.vocal_check.setToolTip(s["tt_iso"])
+        self.skip_orig_check.setToolTip(s["tt_skip"])
+        self.overwrite_check.setToolTip(s["tt_over"])
+        self.continue_err_check.setToolTip(s["tt_cont"])
+        self.start_btn.setToolTip(s["tt_start"])
+
     # ── Theme ─────────────────────────────────────────────────────────────────
+
+
+
+    def toggle_mode(self):
+        current_id = self.current_theme.id
+        new_id = "codex-solar-light-revisited" if current_id == "golden-slate" else "golden-slate"
+        for i, t in enumerate(self.themes):
+            if t.id == new_id:
+                self.theme_combo.setCurrentIndex(i)
+                break
 
     def change_theme(self, theme_name: str):
         for t in self.themes:
