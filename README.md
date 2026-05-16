@@ -16,6 +16,7 @@ Part of the VaultWares Ecosystem • [docs.vaultwares.com](https://docs.vaultwar
 - **Multi-Language:** Translate into multiple target languages simultaneously.
 - **Batch Processing:** Recursive folder scanning with extension filtering.
 - **VaultWares Native:** Built-in compliance with VaultWares Brand & Privacy guidelines.
+- **Offline Translation:** Integrates `argostranslate` for completely local, privacy-first translation.
 
 ---
 

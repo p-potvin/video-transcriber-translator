@@ -28,7 +28,7 @@ def main():
     )
     parser.add_argument("--skip-original", action="store_true", help="Do not generate original-language SRT")
     parser.add_argument("--skip-vocal-isolation", action="store_true", help="Skip vocal isolation with Demucs (faster but noisier)")
-    parser.add_argument("--translate-api", default="deep-translator", help="Translator backend (googletrans or deep-translator)")
+    parser.add_argument("--translate-api", default="argos", help="Translator backend (argos)")
     parser.add_argument(
         "--translate-mode",
         choices=["all", "non-target"],

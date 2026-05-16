@@ -4,24 +4,30 @@ import random
 from functools import lru_cache
 import inspect
 
-
 class UnsupportedLanguageError(RuntimeError):
     pass
 
-
 @lru_cache(maxsize=None)
-def get_supported_language_codes(translate_api="deep-translator"):
-    if translate_api == "deep-translator":
-        from deep_translator import GoogleTranslator
+def get_supported_language_codes(translate_api="argos"):
+    if translate_api == "argos":
+        try:
+            import argostranslate.package
+            import argostranslate.translate
 
-        return {
-            str(code).strip().lower()
-            for code in GoogleTranslator().get_supported_languages(as_dict=True).values()
-        }
+            argostranslate.package.update_package_index()
+            available_packages = argostranslate.package.get_available_packages()
+
+            codes = set()
+            for pkg in available_packages:
+                codes.add(pkg.to_code)
+                codes.add(pkg.from_code)
+
+            return {code.lower() for code in codes}
+        except Exception:
+            return set()
     raise ValueError(f"Unsupported translate API: {translate_api}")
 
-
-def is_supported_language_code(lang_code, translate_api="deep-translator", allow_auto=False):
+def is_supported_language_code(lang_code, translate_api="argos", allow_auto=False):
     normalized_lang = str(lang_code or "").strip().lower()
     if not normalized_lang:
         return False
@@ -29,10 +35,55 @@ def is_supported_language_code(lang_code, translate_api="deep-translator", allow
         return True
     return normalized_lang in get_supported_language_codes(translate_api)
 
+def _get_argos_translator(source_lang, target_lang):
+    import argostranslate.package
+    import argostranslate.translate
+
+    source_lang = "en" if source_lang == "auto" or not source_lang else source_lang
+
+    if source_lang.lower() == target_lang.lower():
+        class PassthroughTranslator:
+            def translate(self, text):
+                return text
+        return PassthroughTranslator()
+
+    # Try to find installed translation
+    installed_languages = argostranslate.translate.get_installed_languages()
+    source_lang_obj = next((lang for lang in installed_languages if lang.code == source_lang), None)
+    target_lang_obj = next((lang for lang in installed_languages if lang.code == target_lang), None)
+
+    if source_lang_obj and target_lang_obj:
+        translation = source_lang_obj.get_translation(target_lang_obj)
+        if translation:
+            return translation
+
+    # If not installed, try to download and install
+    argostranslate.package.update_package_index()
+    available_packages = argostranslate.package.get_available_packages()
+    package_to_install = next(
+        (pkg for pkg in available_packages if pkg.from_code == source_lang and pkg.to_code == target_lang),
+        None
+    )
+
+    if package_to_install:
+        print(f"Downloading translation package: {source_lang} -> {target_lang}...")
+        argostranslate.package.install_from_path(package_to_install.download())
+
+        installed_languages = argostranslate.translate.get_installed_languages()
+        source_lang_obj = next((lang for lang in installed_languages if lang.code == source_lang), None)
+        target_lang_obj = next((lang for lang in installed_languages if lang.code == target_lang), None)
+
+        if source_lang_obj and target_lang_obj:
+            translation = source_lang_obj.get_translation(target_lang_obj)
+            if translation:
+                return translation
+
+    raise RuntimeError(f"Could not find or install translation package for {source_lang} -> {target_lang}")
+
 async def translate_segments(
     segments,
     target_lang: str,
-    translate_api="deep-translator",
+    translate_api="argos",
     max_chars=750000,
     max_calls=1000,
     translate_mode="non-target",
@@ -41,7 +92,6 @@ async def translate_segments(
     if not segments:
         return []
 
-    # Check if we got a list of strings or objects. Maintain backwards compatibility.
     is_list_of_strings = all(isinstance(s, str) for s in segments)
     
     total_chars = sum(len(s if is_list_of_strings else s.text) for s in segments)
@@ -51,25 +101,22 @@ async def translate_segments(
             "Use --max-translate-chars to raise this limit or skip translation."
         )
 
-    if translate_api == "deep-translator":
+    if translate_api == "argos":
         try:
-            from deep_translator import GoogleTranslator
-            from deep_translator.exceptions import LanguageNotSupportedException
-            from googletrans import Translator as GoogleTrans_Detector
+            import argostranslate.package
+            import argostranslate.translate
         except ImportError as exc:
             raise ImportError(
-                "Missing deep-translator or googletrans. Install with: "
-                "pip install deep-translator googletrans==4.0.0-rc1"
+                "Missing argostranslate. Install with: pip install argostranslate"
             ) from exc
 
         translated_texts = []
         calls = 0
 
-        if detector is None:
-            detector = GoogleTrans_Detector()
+        # We'll need a translator per source language. For strings we assume "auto" -> "en"
+        translators_cache = {}
 
         if translate_mode == "non-target":            
-            # Identify which segments need translation
             indices_to_translate = []
             
             for i, s in enumerate(segments):
@@ -77,14 +124,10 @@ async def translate_segments(
                 if not text.strip():
                     continue
                 
-                # Logic: Skip translation if segment language matches target language
-                # If we only have text, we must detect.
                 if is_list_of_strings:
                     indices_to_translate.append(i)
                 else:
-                    # Segment language might be 'en', target might be 'en'
-                    # If language is None or missing, it will be translated with source="auto"
-                    current_lang = getattr(s, 'language', None) or ""
+                    current_lang = getattr(s, 'language', None) or "en"
                     if current_lang.lower() != target_lang.lower():
                         indices_to_translate.append(i)
 
@@ -98,15 +141,16 @@ async def translate_segments(
                     raise RuntimeError("Translation request limit reached.")
                 
                 text = translated_texts[idx]
+                segment = segments[idx] if not is_list_of_strings else None
+                source_lang = getattr(segment, 'language', "en") if segment else "en"
+
+                cache_key = f"{source_lang}_{target_lang}"
+                if cache_key not in translators_cache:
+                    translators_cache[cache_key] = _get_argos_translator(source_lang, target_lang)
                 
                 try:                    
-                    result = GoogleTranslator(target=target_lang).translate(text)
-
-                    if isinstance(result, str):
-                        translated_texts[idx] = result
-                    else:
-                        translated_texts[idx] = getattr(result, "text", text)
-
+                    translator = translators_cache[cache_key]
+                    translated_texts[idx] = translator.translate(text)
                     calls += 1
                 except Exception as exc:
                     raise ValueError(
@@ -114,10 +158,9 @@ async def translate_segments(
                     ) from exc
             
             print(f"Translation completed with {calls} calls.")
-            
             return translated_texts
 
-        # "all" mode for deep-translator
+        # "all" mode
         from tqdm import tqdm
         input_texts = [s if is_list_of_strings else s.text for s in segments]
         for i, text in enumerate(tqdm(input_texts, desc=f"Translating to {target_lang}", unit="segment", colour="blue")):
@@ -129,11 +172,17 @@ async def translate_segments(
             
             tqdm.write(f"Translating segment {i}: '{text}'")
 
-            result = GoogleTranslator(source="auto", target=target_lang).translate(text)
-            if isinstance(result, str):
-                translated_texts.append(result)
-            else:
-                translated_texts.append(getattr(result, "text", text))
+            segment = segments[i] if not is_list_of_strings else None
+            source_lang = getattr(segment, 'language', "en") if segment else "en"
+
+            cache_key = f"{source_lang}_{target_lang}"
+            if cache_key not in translators_cache:
+                translators_cache[cache_key] = _get_argos_translator(source_lang, target_lang)
+
+            translator = translators_cache[cache_key]
+            result = translator.translate(text)
+            translated_texts.append(result)
+
         return translated_texts
 
     else:
