@@ -250,20 +250,16 @@ class VaultWindow(QMainWindow):
     def __init__(self):
         super().__init__()
         self.setWindowTitle("Vault Video Enhancer")
-        self.setMinimumSize(400, 400)
+        self.setMinimumSize(1100, 700)
         self.setWindowState(Qt.WindowMaximized)
 
         self.exporter = QtThemeExporter()
 
         self.themes = self.exporter.get_all_themes()
-
+        self.current_theme = self.themes[0]
         self.current_lang = "en"
-        # Determine OS mode (simplified, defaulting to dark as requested if unavailable)
-        self.current_mode = "dark"
-        self.current_theme = next((t for t in self.themes if t.name == "Golden Slate"), self.themes[0])
 
         self.init_ui()
-
         self.apply_vault_styles()
         self.setAcceptDrops(True)
 
@@ -276,18 +272,11 @@ class VaultWindow(QMainWindow):
     # ── UI construction ──────────────────────────────────────────────────────
 
     def init_ui(self):
-        self.scroll_area = QScrollArea()
-        self.scroll_area.setWidgetResizable(True)
-        self.scroll_area.setFrameShape(QFrame.NoFrame)
-        self.setCentralWidget(self.scroll_area)
-        
         root = QWidget()
-        self.scroll_area.setWidget(root)
-        
+        self.setCentralWidget(root)
         root_layout = QVBoxLayout(root)
         root_layout.setContentsMargins(16, 10, 16, 10)
         root_layout.setSpacing(10)
-        root.setMinimumHeight(800)
 
         # ── Header ────────────────────────────────────────────────────────
         root_layout.addWidget(self._build_header())
@@ -295,14 +284,8 @@ class VaultWindow(QMainWindow):
 
         # ── Main split (config | monitor) ────────────────────────────────
         self.split = QSplitter(Qt.Horizontal)
-        self.config_panel = self._build_config_panel()
-        self.monitor_panel = self._build_monitor_panel()
-        
-        self.config_panel.setMinimumHeight(400)
-        self.monitor_panel.setMinimumHeight(250)
-        
-        self.split.addWidget(self.config_panel)
-        self.split.addWidget(self.monitor_panel)
+        self.split.addWidget(self._build_config_panel())
+        self.split.addWidget(self._build_monitor_panel())
         self.split.setStretchFactor(0, 4)
         self.split.setStretchFactor(1, 6)
         
@@ -324,6 +307,7 @@ class VaultWindow(QMainWindow):
         layout = QHBoxLayout(w)
         layout.setContentsMargins(0, 4, 0, 4)
 
+        # Logo
         logo_label = QLabel()
         logo_path = "vault-themes/assets/logos/vaultwares-minimal-gold-filled.png"
         logo_pix = QPixmap(logo_path)
@@ -334,10 +318,12 @@ class VaultWindow(QMainWindow):
         logo_label.setFixedSize(36, 36)
         logo_label.setAlignment(Qt.AlignCenter)
 
+        # Title
         self.title_label = QLabel()
         self.title_label.setTextFormat(Qt.RichText)
         self.title_label.setStyleSheet("font-size: 20px; font-weight: 300; letter-spacing: 1px;")
 
+        # Separator spacer
         spacer = QSpacerItem(0, 0, QSizePolicy.Expanding, QSizePolicy.Minimum)
 
 
@@ -357,7 +343,7 @@ class VaultWindow(QMainWindow):
         self.theme_label = QLabel(UI_STRINGS[self.current_lang]["theme"])
         self.theme_label.setObjectName("StatusLabel")
         self.theme_combo = QComboBox()
-        self.theme_combo.setFixedWidth(200)
+        self.theme_combo.setFixedWidth(220)
         for t in self.themes:
             self.theme_combo.addItem(t.name)
 
@@ -384,7 +370,7 @@ class VaultWindow(QMainWindow):
         self.theme_combo.currentTextChanged.connect(self.change_theme)
 
         layout.addWidget(logo_label)
-        layout.addSpacing(2)
+        layout.addSpacing(10)
         layout.addWidget(self.title_label)
         layout.addItem(spacer)
         layout.addWidget(self.mode_btn)
@@ -397,13 +383,13 @@ class VaultWindow(QMainWindow):
 
         return w
 
+
     def _build_config_panel(self) -> QFrame:
         panel = QFrame()
         panel.setObjectName("ConfigPanel")
         layout = QVBoxLayout(panel)
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(14)
-
 
         # Title
         self.config_title = QLabel(UI_STRINGS[self.current_lang]["config_title"])
@@ -428,13 +414,9 @@ class VaultWindow(QMainWindow):
         browse_folder_btn.setFixedWidth(70)
         browse_folder_btn.clicked.connect(self.browse_input_folder)
 
-        self.skip_subdirs_check = QCheckBox("Skip Subdirectories (root only)")
-        self.skip_subdirs_check.setToolTip("If checked, only process files in the selected folder, not subfolders.")
-
         path_row.addWidget(self.input_edit)
         path_row.addWidget(browse_file_btn)
         path_row.addWidget(browse_folder_btn)
-        path_row.addWidget(self.skip_subdirs_check)
         layout.addLayout(path_row)
 
         layout.addWidget(self._make_separator())
@@ -562,7 +544,6 @@ class VaultWindow(QMainWindow):
         layout.setContentsMargins(20, 16, 20, 16)
         layout.setSpacing(10)
 
-
         # Header row
         monitor_row = QHBoxLayout()
         self.monitor_title = QLabel(UI_STRINGS[self.current_lang]["monitor_title"])
@@ -573,7 +554,6 @@ class VaultWindow(QMainWindow):
 
         self.status_badge = QLabel(UI_STRINGS[self.current_lang]["idle"])
         self.status_badge.setObjectName("TagBadge")
-        self.status_badge.setAlignment(Qt.AlignCenter)
         monitor_row.addWidget(self.status_badge)
         
         self.toggle_monitor_btn = QPushButton()
@@ -659,7 +639,8 @@ class VaultWindow(QMainWindow):
         QWidget.setTabOrder(self.input_edit, self.browse_file_btn)
         QWidget.setTabOrder(self.browse_file_btn, self.lang_edit)
         QWidget.setTabOrder(self.lang_edit, self.engine_combo)
-        QWidget.setTabOrder(self.engine_combo, self.mode_combo)
+        QWidget.setTabOrder(self.engine_combo, self.api_combo)
+        QWidget.setTabOrder(self.api_combo, self.mode_combo)
         QWidget.setTabOrder(self.mode_combo, self.src_lang_edit)
         QWidget.setTabOrder(self.src_lang_edit, self.max_duration)
         QWidget.setTabOrder(self.max_duration, self.vocal_check)
@@ -831,8 +812,16 @@ class VaultWindow(QMainWindow):
         full_html = f"{ts_html} {msg_html}"
 
         if is_progress:
-            # Always append progress logs (never overwrite)
-            self.log_area.append(full_html)
+            if getattr(self, '_last_was_progress', False):
+                # Overwrite the last line for progress updates
+                cursor = self.log_area.textCursor()
+                cursor.movePosition(QTextCursor.End)
+                cursor.select(QTextCursor.BlockUnderCursor)
+                cursor.removeSelectedText()
+                self.log_area.setTextCursor(cursor)
+                self.log_area.insertHtml(full_html)
+            else:
+                self.log_area.append(full_html)
             self._last_was_progress = True
         else:
             self.log_area.append(full_html)
@@ -855,7 +844,8 @@ class VaultWindow(QMainWindow):
         params = {
             "input_file": input_path,
             "languages": [l.strip() for l in self.lang_edit.text().split(",") if l.strip()],
-            "translate_api": "local",
+            "engine": self.engine_combo.currentText(),
+            "translate_api": self.api_combo.currentText(),
             "translate_mode": self.mode_combo.currentText(),
             "skip_vocal_isolation": not self.vocal_check.isChecked(),
             "skip_original": self.skip_orig_check.isChecked(),
@@ -865,8 +855,6 @@ class VaultWindow(QMainWindow):
             "overwrite": self.overwrite_check.isChecked(),
             "continue_on_error": self.continue_err_check.isChecked(),
         }
-
-        skip_subdirs = self.skip_subdirs_check.isChecked()
 
         self.start_btn.setEnabled(False)
         self.status_badge.setText(UI_STRINGS[self.current_lang]["running"])
@@ -880,7 +868,6 @@ class VaultWindow(QMainWindow):
         self.log(f"Pipeline started — {os.path.basename(input_path)}")
 
         self.worker = TranscriptionWorker(params)
-        self.worker.skip_subdirs = skip_subdirs
         self.worker.progress.connect(self._on_progress_text)
         self.worker.progress_percent.connect(self._on_progress_pct)
         self.worker.error.connect(self.on_error)

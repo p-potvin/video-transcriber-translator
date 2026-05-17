@@ -39,7 +39,7 @@ def transcribe_video(
     languages = None,
     skip_original = False,
     skip_vocal_isolation = False,
-    translate_api = "local",
+    translate_api = "deep-translator",
     translate_mode = "non-target",
     max_translate_chars = 350000,
     max_translate_calls = 500,
@@ -50,22 +50,16 @@ def transcribe_video(
     progress_callback = None
 ):
     start_total = time.time()
-    # Check if all requested output files already exist when overwrite is disabled
-    if not overwrite and media.srt_files_exist(input_file, output_file, languages, skip_original):
-        print(f"All SRT files already exist for {input_file}, skipping.")
-        if progress_callback is not None:
-            progress_callback(f"SRT files already exist for {os.path.basename(input_file)}, skipping.", 100)
-        return []
-    # Early: Check for audio stream using ffprobe
-    audio_duration = media.get_audio_duration_seconds(input_file)
-    if audio_duration is None or audio_duration == 0.0:
-        raise RuntimeError(f"No audio stream detected in file: {input_file}")
     # Validate input file
     if not os.path.isfile(input_file):
         if os.path.isdir(input_file):
             raise ValueError(f"Input path is a directory, not a file: {input_file}")
         else:
             raise FileNotFoundError(f"Input file does not exist: {input_file}")
+
+    # Check if all requested output files already exist when overwrite is disabled
+    if not overwrite and media.srt_files_exist(input_file, output_file, languages, skip_original):
+        return []
 
     all_segments = list()
     original_texts = []
@@ -88,24 +82,13 @@ def transcribe_video(
     # --- Step 0: Warm-load Models ---
     # Establishing the GPU context early prevents late-initialization CUDA errors 
     # and eliminates weight-swap latency between Demucs and ASR.
-
-    print(f"--- Step 0: Preparing environment ---")
-    if progress_callback is not None:
-        progress_callback("Preparing environment...", 1)
-    time.sleep(0.5)
+    print(f"--- Step 0: Loading AI Models into VRAM ---")
     if progress_callback is not None:
         progress_callback("Step 0: Loading ML models into VRAM (this may take a minute)...", 2)
-    print(f"--- Step 0: Loading AI Models into VRAM ---")
-    # Animate progress bar during dead time
-    load_start = time.time()
-    tick = 0
-    while _PARAKEET_MODEL is None:
-        # Simulate progress up to 10% while waiting for model to load
-        if progress_callback is not None:
-            progress_callback(f"Loading ML models... (still preparing, please wait) [{tick}s]", min(10, 2 + tick))
-        time.sleep(1)
-        tick += 1
+
+    start_load = time.time()
     model = get_parakeet_model()
+
     # Ensure context is fully initialized before starting subprocesses
     try:
         import torch
@@ -113,26 +96,23 @@ def transcribe_video(
             torch.cuda.synchronize()
     except ImportError:
         pass
-    print(f"Models loaded successfully in {time.time() - load_start:.2f}s.")
+
+    print(f"Models loaded successfully in {time.time() - start_load:.2f}s.")
+
     if progress_callback is not None:
-        progress_callback("Initiating Media Pipeline...", 12)
+        progress_callback("Initiating Media Pipeline...", 5)
 
     if skip_vocal_isolation:
         print("Skipping audio fix as requested.")
         transcription_file = input_file
     else:
         try:
-            fixed_file = media.fix_audio_and_reencode(
+            transcription_file = media.fix_audio_and_reencode(
                 input_file, 
                 delay_ms=delay_ms, 
                 max_duration=max_duration,
                 progress_callback=progress_callback
             )
-            # Only use the fixed file if it is not a temp .wav
-            if fixed_file.endswith('_asr_temp.wav'):
-                transcription_file = input_file
-            else:
-                transcription_file = fixed_file
         except Exception as e:
             print(f"Warning: Audio fix failed: {e}. Falling back to original video.")
             transcription_file = input_file
@@ -157,9 +137,7 @@ def transcribe_video(
     if os.path.exists(asr_wav_file):
         os.remove(asr_wav_file)
 
-    # Already checked above, just reuse
-    # audio_duration = media.get_audio_duration_seconds(input_file) or 0.0
-    # Use the value from above
+    audio_duration = media.get_audio_duration_seconds(input_file) or 0.0
 
     if all_segments:
         print(f"First segment starts at: {all_segments[0].start:.2f}s and ends at {all_segments[0].end:.2f}s.")

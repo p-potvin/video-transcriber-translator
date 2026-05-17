@@ -1,19 +1,3 @@
-import shutil
-import time
-
-def robust_rmtree(path, max_retries=5, delay=0.5):
-    """
-    Recursively delete a directory, retrying on PermissionError (WinError 32) for locked files (Windows).
-    """
-    for attempt in range(max_retries):
-        try:
-            shutil.rmtree(path)
-            return
-        except PermissionError as e:
-            if attempt < max_retries - 1:
-                time.sleep(delay)
-            else:
-                raise
 import logging
 import uuid
 import sys
