@@ -189,7 +189,10 @@ UI_STRINGS = {
         "tt_skip": "Do not generate the SRT file for the original spoken language",
         "tt_over": "Overwrite existing SRT files if they exist",
         "tt_cont": "Continue processing next files if one fails (Scan Mode only)",
-        "tt_start": "Initiate transcription pipeline (Ctrl+Return)"
+        "tt_start": "Initiate transcription pipeline (Ctrl+Return)",
+        "running": "RUNNING",
+        "failed": "FAILED",
+        "done": "DONE"
     },
     "qc": {
         "theme": "Thème",
@@ -234,7 +237,10 @@ UI_STRINGS = {
         "tt_skip": "Ne pas générer le fichier SRT pour la langue parlée originale",
         "tt_over": "Écraser les fichiers SRT existants s'ils existent",
         "tt_cont": "Continuer avec les fichiers suivants si l'un échoue (Mode scan uniquement)",
-        "tt_start": "Lancer le pipeline de transcription (Ctrl+Entrée)"
+        "tt_start": "Lancer le pipeline de transcription (Ctrl+Entrée)",
+        "running": "EN COURS",
+        "failed": "ÉCHOUÉ",
+        "done": "TERMINÉ"
     }
 }
 
@@ -305,10 +311,12 @@ class VaultWindow(QMainWindow):
 
         # ── Footer ────────────────────────────────────────────────────────
         root_layout.addWidget(self._make_separator())
-        self.footer_label = QLabel(STRINGS[self.current_lang]["footer"])
-        self.footer_label.setAlignment(Qt.AlignCenter)
-        self.footer_label.setObjectName("FooterLabel")
-        root_layout.addWidget(self.footer_label)
+        self.footer = QLabel(UI_STRINGS[self.current_lang]["footer"])
+        self.footer.setAlignment(Qt.AlignCenter)
+        self.footer.setObjectName("FooterLabel")
+        root_layout.addWidget(self.footer)
+
+        self._setup_accessibility()
 
 
     def _build_header(self) -> QWidget:
@@ -354,7 +362,6 @@ class VaultWindow(QMainWindow):
             self.theme_combo.addItem(t.name)
 
         # OS Default theme selection
-        import sys as _sys
         is_dark = True
         try:
             from PySide6.QtGui import QPalette
@@ -362,9 +369,10 @@ class VaultWindow(QMainWindow):
             app_inst = PySide6.QtWidgets.QApplication.instance()
             if app_inst:
                 win_color = app_inst.palette().color(QPalette.Window).value()
-                if win_color > 128: # Simple brightness check (0-255)
+                if win_color > 128:  # Simple brightness check (0-255)
                     is_dark = False
-        except: pass
+        except Exception:
+            pass
 
         default_theme_id = "golden-slate" if is_dark else "codex-solar-light-revisited"
         for i, t in enumerate(self.themes):
@@ -374,13 +382,6 @@ class VaultWindow(QMainWindow):
                 break
 
         self.theme_combo.currentTextChanged.connect(self.change_theme)
-
-        # Language switch
-        self.lang_label = QLabel(STRINGS[self.current_lang]["lang"])
-        self.lang_combo = QComboBox()
-        self.lang_combo.addItems(["EN", "QC"])
-        self.lang_combo.setCurrentText(self.current_lang)
-        self.lang_combo.currentTextChanged.connect(self.change_language)
 
         layout.addWidget(logo_label)
         layout.addSpacing(2)
@@ -392,13 +393,7 @@ class VaultWindow(QMainWindow):
         layout.addSpacing(6)
         layout.addWidget(self.theme_label)
         layout.addSpacing(6)
-        
-        layout.addWidget(self.theme_label)
         layout.addWidget(self.theme_combo)
-        layout.addSpacing(6)
-        
-        layout.addWidget(self.lang_label)
-        layout.addWidget(self.lang_combo)
 
         return w
 
@@ -659,26 +654,10 @@ class VaultWindow(QMainWindow):
             self.scroll_area.widget().setMinimumHeight(self.split.minimumHeight() + 150)
 
     def _setup_accessibility(self):
-        # --- Accessibility & Tooltips ---
-        self.theme_combo.setToolTip("Select UI Theme")
-        self.input_edit.setToolTip("Path to the video/audio file to process")
-        self.browse_file_btn.setToolTip("Browse for media file (Ctrl+O)")
-        self.browse_folder_btn.setToolTip("Browse for folder")
-        self.lang_edit.setToolTip("Comma-separated target languages for translation (e.g., en, fr, es)")
-        self.engine_combo.setToolTip("Transcription engine to use")
-        self.mode_combo.setToolTip("'all' translates everything; 'non-target' only translates if original isn't the target")
-        self.src_lang_edit.setToolTip("Force a specific source language if auto-detect fails")
-        self.max_duration.setToolTip("Skip media longer than this (seconds)")
-        self.vocal_check.setToolTip("Use Demucs to isolate vocals before transcription for better accuracy in noisy audio")
-        self.skip_orig_check.setToolTip("Do not generate the SRT file for the original spoken language")
-        self.overwrite_check.setToolTip("Overwrite existing SRT files if they exist")
-        self.continue_err_check.setToolTip("Continue processing next files if one fails (Scan Mode only)")
-        self.start_btn.setToolTip("Initiate transcription pipeline (Ctrl+Return)")
-
         # --- Tab Order ---
         QWidget.setTabOrder(self.theme_combo, self.input_edit)
-        QWidget.setTabOrder(self.input_edit, browse_btn)
-        QWidget.setTabOrder(browse_btn, self.lang_edit)
+        QWidget.setTabOrder(self.input_edit, self.browse_file_btn)
+        QWidget.setTabOrder(self.browse_file_btn, self.lang_edit)
         QWidget.setTabOrder(self.lang_edit, self.engine_combo)
         QWidget.setTabOrder(self.engine_combo, self.mode_combo)
         QWidget.setTabOrder(self.mode_combo, self.src_lang_edit)
@@ -691,7 +670,7 @@ class VaultWindow(QMainWindow):
 
         # Keyboard Shortcuts
         self.shortcut_browse = QShortcut(QKeySequence("Ctrl+O"), self)
-        self.shortcut_browse.activated.connect(self.browse_input)
+        self.shortcut_browse.activated.connect(self.browse_input_file)
 
         self.shortcut_start = QShortcut(QKeySequence("Ctrl+Return"), self)
         self.shortcut_start.activated.connect(self.start_processing)
@@ -701,12 +680,6 @@ class VaultWindow(QMainWindow):
 
         self.shortcut_clear = QShortcut(QKeySequence("Esc"), self)
         self.shortcut_clear.activated.connect(lambda: self.input_edit.clear())
-
-        # Footer
-        self.footer = QLabel(UI_STRINGS[self.current_lang]["footer"])
-        self.footer.setAlignment(Qt.AlignCenter)
-        self.footer.setObjectName("FooterLabel")
-        main_layout.addWidget(self.footer)
 
         self.change_language(self.current_lang)
 
@@ -896,7 +869,7 @@ class VaultWindow(QMainWindow):
         skip_subdirs = self.skip_subdirs_check.isChecked()
 
         self.start_btn.setEnabled(False)
-        self.status_badge.setText(STRINGS[self.current_lang]["running"])
+        self.status_badge.setText(UI_STRINGS[self.current_lang]["running"])
         self.status_badge.setStyleSheet(
             f"background-color: {self.current_theme.success}; "
             f"color: {self.current_theme.text_inverse}; "
@@ -923,7 +896,7 @@ class VaultWindow(QMainWindow):
 
     def on_error(self, message: str):
         self.log(f"<span style='color:{self.current_theme.error}'>ERROR: {message}</span>")
-        self.status_badge.setText(STRINGS[self.current_lang]["failed"])
+        self.status_badge.setText(UI_STRINGS[self.current_lang]["failed"])
         self.status_badge.setStyleSheet(
             f"background-color: {self.current_theme.error}; "
             f"color: {self.current_theme.text_inverse}; "
@@ -942,11 +915,11 @@ class VaultWindow(QMainWindow):
         for p in outputs:
             self.log(f"<span style='color:{t.text_muted}'>  • {os.path.basename(p)}</span>")
 
-        self.status_badge.setText(STRINGS[self.current_lang]["done"])
+        self.status_badge.setText(UI_STRINGS[self.current_lang]["done"])
         self.status_badge.setStyleSheet(
             f"background-color: {t.accent}; "
             f"color: {t.text_inverse}; "
-            "border-radius: 4px; padding: 1px 8px; font-size: 10px; font-weight: 700;"
+
         )
         self.start_btn.setEnabled(True)
         self.progress_bar.setValue(100)
