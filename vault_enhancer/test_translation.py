@@ -32,7 +32,7 @@ class TestTranslation(unittest.TestCase):
         result = loop.run_until_complete(translation.translate_segments(
             texts, 
             target_lang="es", 
-            translate_api="argos",
+            translate_api="local",
             translate_mode="non-target"
         ))
         loop.close()
@@ -62,7 +62,7 @@ class TestTranslation(unittest.TestCase):
         result = loop.run_until_complete(translation.translate_segments(
             texts, 
             target_lang="en",
-            translate_api="argos",
+            translate_api="local",
             translate_mode="non-target"
         ))
         loop.close()
@@ -98,7 +98,7 @@ class TestTranslation(unittest.TestCase):
         result = loop.run_until_complete(translation.translate_segments(
             texts, 
             target_lang="fr", 
-            translate_api="argos",
+            translate_api="local",
             translate_mode="all"
         ))
         loop.close()

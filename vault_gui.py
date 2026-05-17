@@ -406,13 +406,6 @@ class VaultWindow(QMainWindow):
         trans_row = QHBoxLayout()
         trans_row.setSpacing(12)
 
-        v_api = QVBoxLayout()
-        v_api.addWidget(self._field_label("Translator Backend"))
-        self.api_combo = QComboBox()
-        self.api_combo.addItems(["deep-translator", "googletrans"])
-        v_api.addWidget(self.api_combo)
-        trans_row.addLayout(v_api)
-
         v_mode = QVBoxLayout()
         v_mode.addWidget(self._field_label("Translate Mode"))
         self.mode_combo = QComboBox()
@@ -594,7 +587,6 @@ class VaultWindow(QMainWindow):
         self.browse_folder_btn.setToolTip("Browse for folder")
         self.lang_edit.setToolTip("Comma-separated target languages for translation (e.g., en, fr, es)")
         self.engine_combo.setToolTip("Transcription engine to use")
-        self.api_combo.setToolTip("Translation backend service")
         self.mode_combo.setToolTip("'all' translates everything; 'non-target' only translates if original isn't the target")
         self.src_lang_edit.setToolTip("Force a specific source language if auto-detect fails")
         self.max_duration.setToolTip("Skip media longer than this (seconds)")
@@ -609,8 +601,7 @@ class VaultWindow(QMainWindow):
         QWidget.setTabOrder(self.input_edit, browse_btn)
         QWidget.setTabOrder(browse_btn, self.lang_edit)
         QWidget.setTabOrder(self.lang_edit, self.engine_combo)
-        QWidget.setTabOrder(self.engine_combo, self.api_combo)
-        QWidget.setTabOrder(self.api_combo, self.mode_combo)
+        QWidget.setTabOrder(self.engine_combo, self.mode_combo)
         QWidget.setTabOrder(self.mode_combo, self.src_lang_edit)
         QWidget.setTabOrder(self.src_lang_edit, self.max_duration)
         QWidget.setTabOrder(self.max_duration, self.vocal_check)
@@ -781,7 +772,7 @@ class VaultWindow(QMainWindow):
         params = {
             "input_file": input_path,
             "languages": [l.strip() for l in self.lang_edit.text().split(",") if l.strip()],
-            "translate_api": self.api_combo.currentText(),
+            "translate_api": "local",
             "translate_mode": self.mode_combo.currentText(),
             "skip_vocal_isolation": not self.vocal_check.isChecked(),
             "skip_original": self.skip_orig_check.isChecked(),

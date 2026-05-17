@@ -51,7 +51,7 @@ class TestCoreIntegration(unittest.TestCase):
             input_file=input_file,
             languages=languages,
             skip_vocal_isolation=False,
-            translate_api="argos"
+            translate_api="local"
         )
 
         # Verify

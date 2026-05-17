@@ -39,7 +39,7 @@ def transcribe_video(
     languages = None,
     skip_original = False,
     skip_vocal_isolation = False,
-    translate_api = "argos",
+    translate_api = "local",
     translate_mode = "non-target",
     max_translate_chars = 350000,
     max_translate_calls = 500,
@@ -179,7 +179,7 @@ def transcribe_video(
     outputs_to_generate[en_srt_path] = original_texts
 
     # Translate if user provided target languages
-    print(f"--- Step 3: Translating the transcribed vocals (Deep Translator) ---")
+    print(f"--- Step 3: Translating the transcribed vocals (Local ArgosTranslate) ---")
     print("Translating segments...")
     if languages:        
         target_languages = languages if isinstance(languages, list) and len(languages) > 0 else source_language
