@@ -1,4 +1,4 @@
-<img src="https://raw.githubusercontent.com/p-potvin/vaultwares-docs/main/logo/vaultwares-logo.svg">
+<img src="https://raw.githubusercontent.com/p-potvin/vaultwares-docs/logo/light.svg">
 
 # Vault Video Enhancer
 
