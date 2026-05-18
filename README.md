@@ -1,6 +1,6 @@
-<img src="https://raw.githubusercontent.com/p-potvin/vaultwares-docs/main/logo/vaultwares-logo.svg">
+<img src="https://raw.githubusercontent.com/p-potvin/vaultwares-docs/logo/light.svg">
 
-# Vault Video Enhancer
+# VaultWares Media Processing
 
 **High-Performance Video Transcription & Multi-Language Translation Tool**  
 Part of the VaultWares Ecosystem • [docs.vaultwares.com](https://docs.vaultwares.com) • [vaultwares.com](https://vaultwares.com)

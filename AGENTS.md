@@ -1,4 +1,4 @@
-# vault-video-enhancer
+# Vaultwares-Media-Processing
 
 > For company-wide rules, read `vaultwares-docs/AGENTS.md` first.
 

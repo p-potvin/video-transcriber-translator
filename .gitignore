@@ -1,6 +1,6 @@
 to_process
 to_process2
-vault_enhancer/__pycache__/
+vaultwares_media_processing/__pycache__/
 venv
 *.srt
 __pycache__/
