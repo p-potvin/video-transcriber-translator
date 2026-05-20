@@ -11,9 +11,9 @@ import time
 
 def main():
     # Only import heavy dependencies inside main() to speed up interpreter exit/error paths
-    from vault_enhancer import core
-    from vault_enhancer import utils
-    from vault_enhancer import media
+    from vaultwares_media_processing import core
+    from vaultwares_media_processing import utils
+    from vaultwares_media_processing import media
 
     utils.set_correlation_id()
     utils.log_info("Starting video transcriber-translator")
